@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { detectDiceFromFrame } from "../lib/diceDetector";
-import { getDiceSearchZone } from "../lib/autoCalibrateBoard";
+import { boardBoundingRect } from "../lib/autoCalibrateBoard";
 import type { BoardCalibration } from "../types/board";
 import type { ConfirmedRoll, DetectionFrame, DetectionStatus } from "../types";
 
@@ -207,11 +207,11 @@ function downscaleGrayInZone(imageData: ImageData, calibration: BoardCalibration
   let y1 = height;
 
   if (calibration) {
-    const zone = getDiceSearchZone(calibration);
-    x0 = Math.floor(Math.min(...zone.map((p) => p.x * width)));
-    y0 = Math.floor(Math.min(...zone.map((p) => p.y * height)));
-    x1 = Math.ceil(Math.max(...zone.map((p) => p.x * width)));
-    y1 = Math.ceil(Math.max(...zone.map((p) => p.y * height)));
+    const rect = boardBoundingRect(calibration, width, height);
+    x0 = rect.x0;
+    y0 = rect.y0;
+    x1 = rect.x0 + rect.w;
+    y1 = rect.y0 + rect.h;
   }
 
   const rw = Math.max(1, x1 - x0);

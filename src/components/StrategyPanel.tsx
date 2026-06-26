@@ -13,7 +13,7 @@ interface Props {
 
 const STATUS_LABELS: Record<DetectionStatus, string> = {
   idle: "Caméra inactive",
-  searching: "Cadrez 2 dés blancs au centre du plateau",
+  searching: "Recherche de 2 dés blancs sur le plateau",
   rolling: "Dés en mouvement — attendez l'arrêt",
   tracking: "Analyse en cours…",
   confirmed: "Lecture validée",

@@ -74,7 +74,6 @@ export function VideoPanel({
                 (calibrationPhase === "playing" || calibrationPhase === "preview")
               }
               status={detectionStatus}
-              calibration={calibration}
             />
           </>
         )}

@@ -111,20 +111,29 @@ function labelComponents(mask: Uint8Array, w: number, h: number): Int32Array {
   return labels;
 }
 
-/** Zone normalisée où lancer les dés (sous le plateau, centre). */
-export function getDiceSearchZone(calibration: BoardCalibration): NormPoint[] {
-  const [, , br, bl] = calibration.corners;
-  const midB = { x: (bl.x + br.x) / 2, y: (bl.y + br.y) / 2 };
-  const span = Math.hypot(br.x - bl.x, br.y - bl.y);
-  const drop = Math.min(0.22, span * 0.55);
-  const halfW = Math.min(0.28, span * 0.42);
+/** Zone de recherche des dés = tout le tapis calibré (les dés peuvent atterrir n'importe où). */
+export function getBoardSearchZone(calibration: BoardCalibration): NormPoint[] {
+  return calibration.corners;
+}
 
-  return [
-    { x: midB.x - halfW, y: midB.y },
-    { x: midB.x + halfW, y: midB.y },
-    { x: midB.x + halfW, y: Math.min(0.98, midB.y + drop) },
-    { x: midB.x - halfW, y: Math.min(0.98, midB.y + drop) },
-  ];
+/** @deprecated Alias — recherche sur le plateau entier, pas une zone de lancer fixe. */
+export function getDiceSearchZone(calibration: BoardCalibration): NormPoint[] {
+  return getBoardSearchZone(calibration);
+}
+
+export function boardBoundingRect(
+  calibration: BoardCalibration,
+  width: number,
+  height: number,
+): { x0: number; y0: number; w: number; h: number } {
+  const zone = getBoardSearchZone(calibration);
+  const xs = zone.map((p) => p.x * width);
+  const ys = zone.map((p) => p.y * height);
+  const x0 = Math.max(0, Math.floor(Math.min(...xs)));
+  const y0 = Math.max(0, Math.floor(Math.min(...ys)));
+  const x1 = Math.min(width, Math.ceil(Math.max(...xs)));
+  const y1 = Math.min(height, Math.ceil(Math.max(...ys)));
+  return { x0, y0, w: Math.max(40, x1 - x0), h: Math.max(40, y1 - y0) };
 }
 
 export function pointInPolygon(x: number, y: number, poly: NormPoint[]): boolean {

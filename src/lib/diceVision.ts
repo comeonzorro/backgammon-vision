@@ -1,8 +1,9 @@
 import type { DetectionFrame, DiceDetection } from "../types";
 import type { BoardCalibration } from "../types/board";
-import { getDiceSearchZone, pointInPolygon } from "./autoCalibrateBoard";
+import { boardBoundingRect, getBoardSearchZone, pointInPolygon } from "./autoCalibrateBoard";
 
-const MAX_WIDTH = 480;
+const MAX_WIDTH = 520;
+const MIN_PIP_CONFIDENCE = 0.38;
 
 interface Box {
   x: number;
@@ -16,7 +17,7 @@ interface Candidate extends Box {
   meanLum: number;
 }
 
-/** Détection caméra : repère les dés blancs dans la zone de lancer (sous le plateau). */
+/** Détection caméra : repère les dés blancs n'importe où sur le tapis calibré. */
 export function detectDiceWithCamera(
   imageData: ImageData,
   calibration?: BoardCalibration | null,
@@ -24,19 +25,11 @@ export function detectDiceWithCamera(
   const { width, height, data } = imageData;
 
   let crop = { x0: 0, y0: 0, w: width, h: height };
+  const boardPoly = calibration ? getBoardSearchZone(calibration) : null;
+
   if (calibration) {
-    const zone = getDiceSearchZone(calibration);
-    const xs = zone.map((p) => p.x * width);
-    const ys = zone.map((p) => p.y * height);
-    crop = {
-      x0: Math.max(0, Math.floor(Math.min(...xs))),
-      y0: Math.max(0, Math.floor(Math.min(...ys))),
-      w: Math.min(width, Math.ceil(Math.max(...xs)) - Math.floor(Math.min(...xs))),
-      h: Math.min(height, Math.ceil(Math.max(...ys)) - Math.floor(Math.min(...ys))),
-    };
-    if (crop.w < 40 || crop.h < 40) {
-      crop = { x0: 0, y0: 0, w: width, h: height };
-    }
+    const rect = boardBoundingRect(calibration, width, height);
+    crop = { x0: rect.x0, y0: rect.y0, w: rect.w, h: rect.h };
   }
 
   const cropped = cropRegion(data, width, height, crop.x0, crop.y0, crop.w, crop.h);
@@ -45,18 +38,18 @@ export function detectDiceWithCamera(
   const sh = Math.max(1, Math.round(cropped.height * scale));
   const gray = downscaleGray(cropped.data, cropped.width, cropped.height, sw, sh);
 
-  const boardPoly = calibration?.corners ?? null;
-  const candidates = findDiceCandidates(gray, sw, sh).filter((c) => {
-    if (!boardPoly) return true;
-    const nx = (crop.x0 + (c.x + c.w / 2) / sw * cropped.width) / width;
-    const ny = (crop.y0 + (c.y + c.h / 2) / sh * cropped.height) / height;
-    return !pointInPolygon(nx, ny, boardPoly);
-  });
+  const candidates = findDiceCandidates(gray, sw, sh)
+    .filter((c) => {
+      if (!boardPoly) return true;
+      const nx = (crop.x0 + ((c.x + c.w / 2) / sw) * cropped.width) / width;
+      const ny = (crop.y0 + ((c.y + c.h / 2) / sh) * cropped.height) / height;
+      return pointInPolygon(nx, ny, boardPoly);
+    });
 
   const invScale = 1 / scale;
-  const dice: DiceDetection[] = [];
+  const scored: DiceDetection[] = [];
 
-  for (const c of candidates.slice(0, 2)) {
+  for (const c of candidates.slice(0, 12)) {
     const box = {
       x: Math.round(crop.x0 + c.x * invScale),
       y: Math.round(crop.y0 + c.y * invScale),
@@ -64,9 +57,9 @@ export function detectDiceWithCamera(
       h: Math.round(c.h * invScale),
     };
     const read = readDieFace(data, width, height, box);
-    if (read.value < 1 || read.value > 6) continue;
+    if (read.value < 1 || read.value > 6 || read.confidence < MIN_PIP_CONFIDENCE) continue;
 
-    dice.push({
+    scored.push({
       value: read.value,
       confidence: read.confidence,
       x: box.x / width,
@@ -76,6 +69,8 @@ export function detectDiceWithCamera(
     });
   }
 
+  scored.sort((a, b) => b.confidence - a.confidence);
+  const dice = dedupeNearbyDice(scored).slice(0, 2);
   dice.sort((a, b) => a.x - b.x);
 
   return {
@@ -84,6 +79,23 @@ export function detectDiceWithCamera(
     source: "camera-cv",
     motionScore: 0,
   };
+}
+
+function dedupeNearbyDice(dice: DiceDetection[]): DiceDetection[] {
+  const kept: DiceDetection[] = [];
+  for (const d of dice) {
+    const cx = d.x + d.width / 2;
+    const cy = d.y + d.height / 2;
+    const dup = kept.some((k) => {
+      const kx = k.x + k.width / 2;
+      const ky = k.y + k.height / 2;
+      const dist = Math.hypot(cx - kx, cy - ky);
+      const span = Math.max(d.width, d.height, k.width, k.height);
+      return dist < span * 0.85;
+    });
+    if (!dup) kept.push(d);
+  }
+  return kept;
 }
 
 function cropRegion(
@@ -142,8 +154,8 @@ function downscaleGray(
 
 function findDiceCandidates(gray: Uint8Array, w: number, h: number): Candidate[] {
   const total = w * h;
-  const minArea = total * 0.008;
-  const maxArea = total * 0.22;
+  const minArea = total * 0.0012;
+  const maxArea = total * 0.065;
   const threshold = computeBrightThreshold(gray);
   const mask = new Uint8Array(total);
   for (let i = 0; i < total; i++) {
@@ -178,11 +190,11 @@ function findDiceCandidates(gray: Uint8Array, w: number, h: number): Candidate[]
     const bw = s.maxX - s.minX + 1;
     const bh = s.maxY - s.minY + 1;
     const aspect = bw / bh;
-    if (aspect < 0.62 || aspect > 1.65) continue;
+    if (aspect < 0.58 || aspect > 1.72) continue;
     const fill = s.count / (bw * bh);
-    if (fill < 0.38) continue;
+    if (fill < 0.32) continue;
     const meanLum = s.lumSum / s.count;
-    if (meanLum < 135) continue;
+    if (meanLum < 128) continue;
 
     candidates.push({
       x: s.minX,
@@ -207,7 +219,7 @@ function computeBrightThreshold(gray: Uint8Array): number {
     count += hist[v];
   }
   const mean = count ? sum / count : 128;
-  return Math.min(205, Math.max(128, mean + 18));
+  return Math.min(205, Math.max(125, mean + 16));
 }
 
 function readDieFace(

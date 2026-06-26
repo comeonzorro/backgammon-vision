@@ -25,13 +25,14 @@ Sans capteur externe, l'app analyse le flux vidéo dans le navigateur :
 
 1. **Repérage** des zones blanches (dés sur le tapis)
 2. **Comptage des points** (pip counting) sur chaque dé
-3. **Stabilisation** : lecture validée seulement quand les 2 dés sont immobiles (~1,5 s)
+3. **Stabilisation** : lecture validée quand les 2 dés sont immobiles (~1 s)
 
 **Conditions pour une bonne lecture :**
 - Dés **blancs à points noirs** (standard backgammon)
 - **Éclairage uniforme**, sans ombre forte
 - Téléphone **fixe** au-dessus du plateau
-- Dés **immobiles** dans la zone centrale (cadre jaune à l'écran)
+- Les dés peuvent atterrir **n'importe où sur le tapis** — la détection parcourt tout le plateau calibré
+- Attendre que les dés soient **immobiles** après le lancer
 - Éviter mains/objets dans le cadre au moment de la lecture
 
 L'option ONNX reste disponible pour un modèle YOLO entraîné plus tard (plus robuste en conditions difficiles).
