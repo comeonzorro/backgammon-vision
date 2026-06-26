@@ -1,0 +1,58 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.boardOutline {
+  position: absolute;
+  inset: 0;
+  background: rgba(201, 162, 39, 0.06);
+  box-shadow: inset 0 0 0 2px rgba(201, 162, 39, 0.55);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--accent);
+  font-size: 0.55rem;
+  font-weight: 800;
+  pointer-events: auto;
+  padding: 0;
+  z-index: 2;
+}
+
+.handleActive {
+  cursor: grab;
+  touch-action: none;
+}
+
+.handleActive:active {
+  cursor: grabbing;
+}
+
+.hint {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--accent);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}

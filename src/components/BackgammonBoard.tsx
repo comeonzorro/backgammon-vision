@@ -8,6 +8,9 @@ interface Props {
   offWhite: number;
   offBlack: number;
   compact?: boolean;
+  live?: boolean;
+  confidence?: number;
+  pointConfidence?: Record<number, number>;
 }
 
 export function BackgammonBoard({
@@ -17,12 +20,23 @@ export function BackgammonBoard({
   offWhite,
   offBlack,
   compact,
+  live,
+  confidence = 0,
+  pointConfidence,
 }: Props) {
   const top = [...points.slice(12, 24)].reverse();
   const bottom = points.slice(0, 12);
 
   return (
-    <div className={`${styles.board} ${compact ? styles.compact : ""}`}>
+    <div className={`${styles.board} ${compact ? styles.compact : ""} ${live ? styles.live : ""}`}>
+      <div className={styles.boardHeader}>
+        <span className={styles.boardTitle}>Plateau</span>
+        {live && (
+          <span className={styles.liveBadge}>
+            LIVE {(confidence * 100).toFixed(0)}%
+          </span>
+        )}
+      </div>
       <div className={styles.offArea}>
         <span className={styles.offLabel}>Dé {offWhite}</span>
         <span className={styles.offLabel}>Dé {offBlack}</span>
@@ -30,7 +44,13 @@ export function BackgammonBoard({
       <div className={styles.inner}>
         <div className={styles.half}>
           {top.map((p, i) => (
-            <Point key={p.index} point={p} direction="down" alt={i % 2 === 0} />
+            <Point
+              key={p.index}
+              point={p}
+              direction="down"
+              alt={i % 2 === 0}
+              confidence={pointConfidence?.[p.index]}
+            />
           ))}
         </div>
         <div className={styles.bar}>
@@ -47,7 +67,13 @@ export function BackgammonBoard({
         </div>
         <div className={styles.half}>
           {bottom.map((p, i) => (
-            <Point key={p.index} point={p} direction="up" alt={i % 2 === 0} />
+            <Point
+              key={p.index}
+              point={p}
+              direction="up"
+              alt={i % 2 === 0}
+              confidence={pointConfidence?.[p.index]}
+            />
           ))}
         </div>
       </div>
@@ -59,17 +85,22 @@ function Point({
   point,
   direction,
   alt,
+  confidence,
 }: {
   point: BackgammonPoint;
   direction: "up" | "down";
   alt: boolean;
+  confidence?: number;
 }) {
   const count = Math.max(point.white, point.black);
   const color = point.white > point.black ? "white" : point.black > 0 ? "black" : null;
   const shown = Math.min(count, 5);
+  const lowConf = confidence !== undefined && confidence < 0.45;
 
   return (
-    <div className={`${styles.point} ${styles[direction]} ${alt ? styles.alt : ""}`}>
+    <div
+      className={`${styles.point} ${styles[direction]} ${alt ? styles.alt : ""} ${lowConf ? styles.uncertain : ""}`}
+    >
       <div className={styles.triangle} />
       <div className={styles.stack}>
         {color &&

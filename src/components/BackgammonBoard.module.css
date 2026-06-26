@@ -10,6 +10,43 @@
   padding: 0.35rem;
 }
 
+.boardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.boardTitle {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.liveBadge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--success);
+  animation: livePulse 1.5s ease infinite;
+}
+
+.live {
+  box-shadow:
+    inset 0 2px 20px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(62, 207, 142, 0.35);
+}
+
+@keyframes livePulse {
+  50% { opacity: 0.55; }
+}
+
+.uncertain {
+  opacity: 0.72;
+  outline: 1px dashed rgba(232, 93, 93, 0.45);
+  outline-offset: -1px;
+}
+
 .offArea {
   display: flex;
   justify-content: space-between;

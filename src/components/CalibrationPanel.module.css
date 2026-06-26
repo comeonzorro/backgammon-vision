@@ -1,0 +1,76 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel h2 {
+  font-size: 0.92rem;
+  color: var(--accent);
+}
+
+.step {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.steps li + li {
+  margin-top: 0.25rem;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.statusOk {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.actions button {
+  font-size: 0.78rem;
+}
+
+.reset {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: transparent;
+  border-style: dashed;
+  align-self: flex-start;
+}

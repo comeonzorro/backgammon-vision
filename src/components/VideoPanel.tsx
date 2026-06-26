@@ -1,6 +1,8 @@
 import type { RefObject } from "react";
 import { extractYouTubeVideoId } from "../lib/streamSources";
+import type { BoardCalibration, CalibrationPhase } from "../types/board";
 import type { DetectionFrame, DetectionStatus } from "../types";
+import { CalibrationOverlay } from "./CalibrationOverlay";
 import { DiceOverlay } from "./DiceOverlay";
 import styles from "./VideoPanel.module.css";
 
@@ -13,6 +15,10 @@ interface Props {
   showOverlay: boolean;
   detectionStatus?: DetectionStatus;
   fillStage?: boolean;
+  calibration?: BoardCalibration;
+  calibrationPhase?: CalibrationPhase;
+  onCornerMove?: (index: 0 | 1 | 2 | 3, point: { x: number; y: number }) => void;
+  showCalibration?: boolean;
 }
 
 export function VideoPanel({
@@ -24,6 +30,10 @@ export function VideoPanel({
   showOverlay,
   detectionStatus = "idle",
   fillStage = false,
+  calibration,
+  calibrationPhase = "playing",
+  onCornerMove,
+  showCalibration = false,
 }: Props) {
   const ytId =
     sourceKind === "youtube" && youtubeInput
@@ -50,9 +60,15 @@ export function VideoPanel({
               muted
               autoPlay
             />
+            <CalibrationOverlay
+              calibration={calibration ?? { corners: [{ x: 0.1, y: 0.2 }, { x: 0.9, y: 0.2 }, { x: 0.9, y: 0.8 }, { x: 0.1, y: 0.8 }] }}
+              onCornerMove={onCornerMove ?? (() => undefined)}
+              phase={calibrationPhase}
+              editable={showCalibration && calibrationPhase === "adjust"}
+            />
             <DiceOverlay
               frame={detectionFrame}
-              show={showOverlay && sourceKind !== "youtube"}
+              show={showOverlay && sourceKind !== "youtube" && calibrationPhase === "playing"}
               status={detectionStatus}
             />
           </>

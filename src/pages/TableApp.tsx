@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BackgammonBoard } from "../components/BackgammonBoard";
+import { CalibrationPanel } from "../components/CalibrationPanel";
 import { GameSessionPanel } from "../components/GameSessionPanel";
 import { LiveChat } from "../components/LiveChat";
 import { LiveConnectPanel } from "../components/LiveConnectPanel";
@@ -8,12 +9,15 @@ import { ObsConnectModal } from "../components/ObsConnectModal";
 import { SidebarControls } from "../components/SidebarControls";
 import { StrategyPanel } from "../components/StrategyPanel";
 import { VideoPanel } from "../components/VideoPanel";
+import { useBoardCalibration } from "../hooks/useBoardCalibration";
+import { useBoardDetection } from "../hooks/useBoardDetection";
 import { useCameraDevices } from "../hooks/useCameraDevices";
 import { useDiceDetection } from "../hooks/useDiceDetection";
 import { useGameSession } from "../hooks/useGameSession";
 import { useLiveRoom } from "../hooks/useLiveRoom";
 import { useVideoFramePublisher } from "../hooks/useVideoFramePublisher";
 import { useVideoSource } from "../hooks/useVideoSource";
+import { detectionToSnapshot } from "../lib/boardVision";
 import { createRoomId } from "../lib/videoInputs";
 import { createInitialBoard, analyzePosition, snapshotFromDice } from "../lib/strategyEngine";
 import type { AppMode, GameSnapshot, HistoryEntry, StrategyAdvice } from "../types";
@@ -52,10 +56,23 @@ export function TableApp() {
 
   const video = useVideoSource();
   const cameras = useCameraDevices(true);
-  const session = useGameSession(video.state.active);
+  const boardCalib = useBoardCalibration();
   const streamActiveForDetection =
     video.state.active && video.state.kind !== "youtube";
-  const detection = useDiceDetection(video.videoRef, streamActiveForDetection);
+
+  const boardDetection = useBoardDetection(
+    video.videoRef,
+    boardCalib.calibration,
+    streamActiveForDetection,
+    boardCalib.isPlaying,
+  );
+
+  const detection = useDiceDetection(
+    video.videoRef,
+    streamActiveForDetection && boardCalib.isPlaying,
+  );
+
+  const session = useGameSession(video.state.active && boardCalib.isPlaying);
 
   const live = useLiveRoom({
     role: "host",
@@ -80,10 +97,47 @@ export function TableApp() {
   }, [autoCameraTried, video]);
 
   useEffect(() => {
-    if (streamActiveForDetection && !detection.liveMode) {
+    if (streamActiveForDetection && boardCalib.isPlaying && !detection.liveMode) {
       detection.setLiveMode(true);
     }
-  }, [streamActiveForDetection]);
+  }, [streamActiveForDetection, boardCalib.isPlaying]);
+
+  useEffect(() => {
+    if (!boardCalib.isPlaying || !boardDetection.stable) return;
+    const det = boardDetection.stable;
+    setSnapshot((prev) => ({
+      ...prev,
+      points: det.points.map((p) => ({
+        index: p.index,
+        white: p.white,
+        black: p.black,
+      })),
+      barWhite: det.barWhite,
+      barBlack: det.barBlack,
+      timestamp: det.timestamp,
+    }));
+  }, [boardDetection.stable?.timestamp, boardCalib.isPlaying]);
+
+  const applyStandardBoard = () => {
+    setSnapshot((prev) => ({
+      ...prev,
+      points: createInitialBoard(),
+      barWhite: 0,
+      barBlack: 0,
+      offWhite: 0,
+      offBlack: 0,
+    }));
+  };
+
+  const handleStartGame = () => {
+    if (boardDetection.preview && boardDetection.preview.confidence >= 0.35) {
+      const board = detectionToSnapshot(boardDetection.preview);
+      setSnapshot((prev) => ({ ...prev, ...board }));
+    } else {
+      applyStandardBoard();
+    }
+    boardCalib.startGame();
+  };
 
   useEffect(() => {
     if (!detection.confirmedRoll) return;
@@ -192,6 +246,48 @@ export function TableApp() {
     video.startYouTube(url);
   };
 
+  const displayBoard = useMemo(() => {
+    if (boardCalib.isPlaying) {
+      return {
+        points: snapshot.points,
+        barWhite: snapshot.barWhite,
+        barBlack: snapshot.barBlack,
+        offWhite: snapshot.offWhite,
+        offBlack: snapshot.offBlack,
+        confidence: boardDetection.confidence,
+        pointConfidence: boardDetection.stable?.pointConfidence,
+        live: true,
+      };
+    }
+    const prev = boardDetection.preview;
+    if (prev) {
+      return {
+        points: prev.points.map((p) => ({
+          index: p.index,
+          white: p.white,
+          black: p.black,
+        })),
+        barWhite: prev.barWhite,
+        barBlack: prev.barBlack,
+        offWhite: prev.offWhite,
+        offBlack: prev.offBlack,
+        confidence: prev.confidence,
+        pointConfidence: prev.pointConfidence,
+        live: false,
+      };
+    }
+    return {
+      points: snapshot.points,
+      barWhite: snapshot.barWhite,
+      barBlack: snapshot.barBlack,
+      offWhite: snapshot.offWhite,
+      offBlack: snapshot.offBlack,
+      confidence: 0,
+      pointConfidence: undefined as Record<number, number> | undefined,
+      live: false,
+    };
+  }, [boardCalib.isPlaying, snapshot, boardDetection.preview, boardDetection.stable, boardDetection.confidence]);
+
   const layoutClass = useMemo(
     () => (mode === "streamer" ? styles.streamerLayout : styles.playerLayout),
     [mode],
@@ -210,6 +306,10 @@ export function TableApp() {
             showOverlay={detection.liveMode}
             detectionStatus={detection.status}
             fillStage
+            calibration={boardCalib.calibration}
+            calibrationPhase={boardCalib.calibrationPhase}
+            onCornerMove={boardCalib.setCorner}
+            showCalibration={!boardCalib.isPlaying}
           />
           {!video.state.active && video.state.error && (
             <p className={styles.cameraError}>{video.state.error}</p>
@@ -243,21 +343,37 @@ export function TableApp() {
             onHostNameChange={setHostName}
           />
 
+          <CalibrationPanel
+            calibrationPhase={boardCalib.calibrationPhase}
+            gamePhase={boardCalib.gamePhase}
+            preview={boardDetection.preview}
+            confidence={boardDetection.confidence}
+            detecting={boardDetection.detecting}
+            onConfirmPreview={boardCalib.confirmPreview}
+            onStartGame={handleStartGame}
+            onBackToAdjust={boardCalib.backToAdjust}
+            onReset={boardCalib.resetCalibration}
+            onApplyStandard={applyStandardBoard}
+          />
+
           <StrategyPanel
-            advice={advice}
-            dice={detection.diceValues}
+            advice={boardCalib.isPlaying ? advice : null}
+            dice={boardCalib.isPlaying ? detection.diceValues : []}
             detecting={detection.detecting}
-            status={detection.status}
+            status={boardCalib.isPlaying ? detection.status : "idle"}
             confirmed={detection.status === "confirmed"}
           />
 
           <BackgammonBoard
-            points={snapshot.points}
-            barWhite={snapshot.barWhite}
-            barBlack={snapshot.barBlack}
-            offWhite={snapshot.offWhite}
-            offBlack={snapshot.offBlack}
+            points={displayBoard.points}
+            barWhite={displayBoard.barWhite}
+            barBlack={displayBoard.barBlack}
+            offWhite={displayBoard.offWhite}
+            offBlack={displayBoard.offBlack}
             compact
+            live={displayBoard.live || boardCalib.calibrationPhase === "preview"}
+            confidence={displayBoard.confidence}
+            pointConfidence={displayBoard.pointConfidence}
           />
 
           <MoveHistory entries={history.slice(0, 8)} />
