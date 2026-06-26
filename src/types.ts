@@ -3,7 +3,9 @@ export type VideoSourceKind =
   | "webrtc"
   | "hls"
   | "youtube"
-  | "obs-virtual";
+  | "obs-virtual"
+  | "mjpeg"
+  | "remote-webrtc";
 
 export type AppMode = "player" | "streamer";
 

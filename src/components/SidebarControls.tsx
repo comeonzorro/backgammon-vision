@@ -1,22 +1,25 @@
 import { useState } from "react";
+import type { CameraDevice } from "../hooks/useCameraDevices";
 import type { VideoSourceState } from "../hooks/useVideoSource";
-import { StreamConnect } from "./StreamConnect";
+import { CameraSourcesPanel } from "./CameraSourcesPanel";
 import styles from "./SidebarControls.module.css";
 
 interface Props {
   state: VideoSourceState;
-  localOffer: string;
+  devices: CameraDevice[];
+  devicesReady: boolean;
+  onRequestPermission: () => Promise<boolean>;
   detecting: boolean;
   liveMode: boolean;
   useOnnx: boolean;
   detectionHz: number;
   streamActiveForDetection: boolean;
-  onStartCamera: () => void;
+  liveRoomId?: string;
+  onStartCamera: (deviceId?: string, label?: string) => void;
   onStartObs: () => void;
+  onStartHls: (url: string) => void;
+  onStartMjpeg: (url: string) => void;
   onStartYouTube: (url: string) => void;
-  onStartWebRtcViewer: () => void;
-  onStartWebRtcBroadcast: () => void;
-  onApplyAnswer: (json: string) => void;
   onStop: () => void;
   onDetectOnce: () => void;
   onToggleLive: () => void;
@@ -25,18 +28,20 @@ interface Props {
 
 export function SidebarControls({
   state,
-  localOffer,
+  devices,
+  devicesReady,
+  onRequestPermission,
   detecting,
   liveMode,
   useOnnx,
   detectionHz,
   streamActiveForDetection,
+  liveRoomId,
   onStartCamera,
   onStartObs,
+  onStartHls,
+  onStartMjpeg,
   onStartYouTube,
-  onStartWebRtcViewer,
-  onStartWebRtcBroadcast,
-  onApplyAnswer,
   onStop,
   onDetectOnce,
   onToggleLive,
@@ -79,20 +84,22 @@ export function SidebarControls({
         aria-expanded={sourcesOpen}
         onClick={() => setSourcesOpen((o) => !o)}
       >
-        {sourcesOpen ? "Masquer les sources" : "Sources vidéo (OBS · YouTube · WebRTC)"}
+        {sourcesOpen ? "Masquer les sources vidéo" : "Sources vidéo (USB · sans fil · réseau)"}
       </button>
 
       {sourcesOpen && (
-        <StreamConnect
+        <CameraSourcesPanel
           state={state}
-          localOffer={localOffer}
+          devices={devices}
+          devicesReady={devicesReady}
+          onRequestPermission={onRequestPermission}
           onStartCamera={onStartCamera}
           onStartObs={onStartObs}
+          onStartHls={onStartHls}
+          onStartMjpeg={onStartMjpeg}
           onStartYouTube={onStartYouTube}
-          onStartWebRtcViewer={onStartWebRtcViewer}
-          onStartWebRtcBroadcast={onStartWebRtcBroadcast}
-          onApplyAnswer={onApplyAnswer}
           onStop={onStop}
+          liveRoomId={liveRoomId}
         />
       )}
     </section>

@@ -1,0 +1,11 @@
+{
+  "name": "backgammon-vision-live-room",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node live-room.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.1"
+  }
+}

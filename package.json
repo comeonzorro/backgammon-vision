@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:live": "npm run live:server & vite",
+    "live:server": "cd server && npm install && npm start",
     "build": "tsc --noEmit && vite build",
     "build:subdir": "BASE_PATH=/backgammon-vision/ npm run build",
     "preview": "vite preview",

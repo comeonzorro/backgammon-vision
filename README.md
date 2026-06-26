@@ -28,6 +28,46 @@ Sans capteur externe, l'app analyse le flux vidéo dans le navigateur :
 
 L'option ONNX reste disponible pour un modèle YOLO entraîné plus tard (plus robuste en conditions difficiles).
 
+## Sources vidéo (USB, sans fil, réseau)
+
+| Source | Usage |
+|--------|--------|
+| **Liste déroulante caméras** | Webcam USB, caméra intégrée Mac/PC, capture Elgato/OBS Virtual Cam |
+| **Caméra arrière** | Téléphone qui fait tourner la webapp, fixé au-dessus du plateau |
+| **HLS (.m3u8)** | Flux sans fil via OBS → Restream / nginx-rtmp |
+| **MJPEG** | Certaines caméras IP (selon CORS / HTTPS) |
+| **Lien caméra sans fil** | 2ᵉ téléphone sur `#/camera/ROOM` → WebRTC auto vers la table |
+
+Ouvrir **Sources vidéo** dans le panneau droit pour choisir et brancher la caméra.
+
+## Diffusion spectateurs & chat (compétitions)
+
+Architecture **table → serveur relay → spectateurs** :
+
+1. Déployer le serveur WebSocket : `cd server && npm install && npm start` (port 8787)
+2. Configurer `VITE_LIVE_WS_URL=wss://votre-serveur` sur Vercel
+3. Sur la table : **Diffusion spectateurs & chat** → générer une room → activer le live
+4. **Zones spectateurs** : cocher/décocher vidéo, joueurs, dés, analyse, plateau, historique, chat
+5. Copier le **lien spectateurs** (`#/spectateur/bg-xxxxx`) — layout choisi + chat live
+6. Optionnel : **lien caméra sans fil** pour un 2ᵉ téléphone (`#/camera/bg-xxxxx`)
+
+### URLs
+
+| Rôle | URL |
+|------|-----|
+| Table / réalisateur | `/` (racine) |
+| Spectateur | `/#/spectateur/ROOM` |
+| Caméra sans fil | `/#/camera/ROOM` |
+
+Le flux vidéo vers les spectateurs est relayé en JPEG (~3 fps) via le serveur live (plusieurs viewers sans SFU). Pour une qualité broadcast TV, combinez avec OBS + YouTube/Twitch en parallèle.
+
+### Dev local
+
+```bash
+npm run live:server   # terminal 1
+npm run dev           # terminal 2 — VITE_LIVE_WS_URL=ws://localhost:8787 par défaut
+```
+
 ## Fonctionnalités V1
 
 | Module | Description |

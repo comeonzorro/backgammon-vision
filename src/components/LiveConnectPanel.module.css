@@ -1,0 +1,108 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.toggle {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.badgeLive {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--success);
+  font-weight: 700;
+}
+
+.body {
+  padding: 0 0.65rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.warn {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.field input {
+  font-size: 0.78rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.row input {
+  flex: 1;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.check input {
+  width: auto;
+}
+
+.error {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--danger);
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.links code {
+  display: block;
+  font-size: 0.62rem;
+  word-break: break-all;
+  background: var(--bg);
+  padding: 0.35rem;
+  border-radius: 6px;
+  margin: 0.2rem 0;
+}
+
+.linkLabel {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.links button {
+  font-size: 0.72rem;
+  align-self: flex-start;
+}

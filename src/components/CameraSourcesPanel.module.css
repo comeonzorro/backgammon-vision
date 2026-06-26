@@ -1,0 +1,103 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.live {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.off {
+  color: var(--muted);
+}
+
+.label {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+
+.block h3 {
+  font-size: 0.75rem;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin: 0.35rem 0 0.2rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.row input {
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.75rem;
+}
+
+.row button {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.select {
+  width: 100%;
+  font-size: 0.78rem;
+  margin-bottom: 0.35rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.4rem 0.5rem;
+}
+
+.hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0 0 0.35rem;
+}
+
+.link {
+  display: block;
+  font-size: 0.65rem;
+  word-break: break-all;
+  background: var(--bg);
+  padding: 0.35rem;
+  border-radius: 6px;
+  margin-bottom: 0.35rem;
+}
+
+.stop {
+  border-color: var(--danger) !important;
+  color: var(--danger);
+}

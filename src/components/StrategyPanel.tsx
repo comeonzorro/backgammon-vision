@@ -7,6 +7,7 @@ interface Props {
   detecting: boolean;
   status: DetectionStatus;
   confirmed: boolean;
+  variant?: "full" | "dice-only";
 }
 
 const STATUS_LABELS: Record<DetectionStatus, string> = {
@@ -17,17 +18,23 @@ const STATUS_LABELS: Record<DetectionStatus, string> = {
   confirmed: "Lecture validée",
 };
 
-export function StrategyPanel({ advice, dice, detecting, status, confirmed }: Props) {
+export function StrategyPanel({ advice, dice, detecting, status, confirmed, variant = "full" }: Props) {
+  const diceOnly = variant === "dice-only";
+
   return (
     <section className={styles.panel}>
-      <header className={styles.header}>
-        <h2>Analyse stratégique</h2>
-        {detecting && <span className={styles.pulse}>Calcul…</span>}
-      </header>
+      {!diceOnly && (
+        <header className={styles.header}>
+          <h2>Analyse stratégique</h2>
+          {detecting && <span className={styles.pulse}>Calcul…</span>}
+        </header>
+      )}
 
-      <p className={confirmed ? styles.statusOk : styles.statusHint}>
-        {STATUS_LABELS[status]}
-      </p>
+      {!diceOnly && (
+        <p className={confirmed ? styles.statusOk : styles.statusHint}>
+          {STATUS_LABELS[status]}
+        </p>
+      )}
 
       <div className={styles.diceRow}>
         <span className={styles.diceLabel}>Dés lus</span>
@@ -47,7 +54,7 @@ export function StrategyPanel({ advice, dice, detecting, status, confirmed }: Pr
         </div>
       </div>
 
-      {advice ? (
+      {!diceOnly && advice ? (
         <>
           <div className={styles.metricRow}>
             <Metric label="Équité" value={advice.equity.toFixed(3)} />
@@ -78,12 +85,12 @@ export function StrategyPanel({ advice, dice, detecting, status, confirmed }: Pr
             </ul>
           </div>
         </>
-      ) : (
+      ) : !diceOnly ? (
         <p className={styles.muted}>
           Une fois les dés lus et immobiles, l'analyse et le commentaire spectateur s'affichent
           ici.
         </p>
-      )}
+      ) : null}
     </section>
   );
 }
