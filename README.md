@@ -9,7 +9,15 @@ Webapp pour filmer une partie de backgammon depuis un téléphone monté au-dess
 | **Centre (plein écran)** | Flux vidéo live de la caméra — vue overhead du plateau |
 | **Panneau droit** | Logo, noms des joueurs, date, durée de partie, stats live, dés lus, analyse stratégique, mini-plateau, historique, contrôles |
 
-Au lancement sur mobile, la caméra arrière démarre automatiquement et la détection live s'active dès que le flux est prêt.
+Au lancement sur mobile, la caméra arrière démarre automatiquement. **Calibration obligatoire** avant la partie ; les pions sont lus en direct ensuite.
+
+## Calibration & lecture des pions
+
+1. **Alignement** : glissez les 4 coins sur le bord du tapis dans la vidéo
+2. **Aperçu** : vérifiez le mini-plateau (détection caméra, même principe que les dés)
+3. **Lancer la partie** : la sidebar passe en **LIVE** (~1 mise à jour/s)
+
+Les cases peu incertaines sont entourées en pointillés. Dés et analyse ne démarrent qu'après « Lancer la partie ».
 
 ## Lecture des dés (caméra uniquement)
 
