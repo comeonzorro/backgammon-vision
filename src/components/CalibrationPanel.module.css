@@ -74,3 +74,9 @@
   border-style: dashed;
   align-self: flex-start;
 }
+
+.autoBtn {
+  font-size: inherit;
+  padding: 0.15rem 0.45rem;
+  vertical-align: baseline;
+}

@@ -47,9 +47,14 @@ export function useBoardCalibration() {
     setGamePhase("calibration");
   }, []);
 
+  const applyCorners = useCallback((corners: BoardCalibration["corners"]) => {
+    setCalibration({ corners });
+  }, []);
+
   return {
     calibration,
     setCalibration,
+    applyCorners,
     setCorner,
     resetCalibration,
     calibrationPhase,

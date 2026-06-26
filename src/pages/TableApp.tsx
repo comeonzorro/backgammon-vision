@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackgammonBoard } from "../components/BackgammonBoard";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { GameSessionPanel } from "../components/GameSessionPanel";
 import { LiveChat } from "../components/LiveChat";
 import { LiveConnectPanel } from "../components/LiveConnectPanel";
+import { MobileTabBar } from "../components/MobileTabBar";
 import { MoveHistory } from "../components/MoveHistory";
 import { ObsConnectModal } from "../components/ObsConnectModal";
 import { SidebarControls } from "../components/SidebarControls";
@@ -12,11 +13,13 @@ import { VideoPanel } from "../components/VideoPanel";
 import { useBoardCalibration } from "../hooks/useBoardCalibration";
 import { useBoardDetection } from "../hooks/useBoardDetection";
 import { useCameraDevices } from "../hooks/useCameraDevices";
+import { useCompactLayout } from "../hooks/useCompactLayout";
 import { useDiceDetection } from "../hooks/useDiceDetection";
 import { useGameSession } from "../hooks/useGameSession";
 import { useLiveRoom } from "../hooks/useLiveRoom";
 import { useVideoFramePublisher } from "../hooks/useVideoFramePublisher";
 import { useVideoSource } from "../hooks/useVideoSource";
+import { autoDetectBoardCorners } from "../lib/autoCalibrateBoard";
 import { detectionToSnapshot } from "../lib/boardVision";
 import { createRoomId } from "../lib/videoInputs";
 import { createInitialBoard, analyzePosition, snapshotFromDice } from "../lib/strategyEngine";
@@ -39,6 +42,9 @@ export function TableApp() {
     () => localStorage.getItem("bgv-chat-name") || "Organisation",
   );
   const [spectatorLayout, setSpectatorLayout] = useState<SpectatorLayout>(DEFAULT_SPECTATOR_LAYOUT);
+  const autoBoardTriedRef = useRef(false);
+
+  const { compact, mobileTab, setMobileTab } = useCompactLayout();
 
   const [snapshot, setSnapshot] = useState<GameSnapshot>(() => ({
     id: crypto.randomUUID(),
@@ -60,6 +66,10 @@ export function TableApp() {
   const streamActiveForDetection =
     video.state.active && video.state.kind !== "youtube";
 
+  const diceStreamActive =
+    streamActiveForDetection &&
+    (boardCalib.calibrationPhase === "preview" || boardCalib.isPlaying);
+
   const boardDetection = useBoardDetection(
     video.videoRef,
     boardCalib.calibration,
@@ -69,7 +79,8 @@ export function TableApp() {
 
   const detection = useDiceDetection(
     video.videoRef,
-    streamActiveForDetection && boardCalib.isPlaying,
+    diceStreamActive,
+    boardCalib.calibration,
   );
 
   const session = useGameSession(video.state.active && boardCalib.isPlaying);
@@ -97,10 +108,47 @@ export function TableApp() {
   }, [autoCameraTried, video]);
 
   useEffect(() => {
-    if (streamActiveForDetection && boardCalib.isPlaying && !detection.liveMode) {
+    if (diceStreamActive && !detection.liveMode) {
       detection.setLiveMode(true);
     }
-  }, [streamActiveForDetection, boardCalib.isPlaying]);
+  }, [diceStreamActive, detection.liveMode, detection.setLiveMode]);
+
+  const captureFrame = useCallback(() => {
+    const videoEl = video.videoRef.current;
+    if (!videoEl || videoEl.readyState < 2) return null;
+    const w = videoEl.videoWidth || 640;
+    const h = videoEl.videoHeight || 480;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(videoEl, 0, 0, w, h);
+    return ctx.getImageData(0, 0, w, h);
+  }, [video.videoRef]);
+
+  const handleAutoDetectBoard = useCallback(() => {
+    const imageData = captureFrame();
+    if (!imageData) return;
+    const detected = autoDetectBoardCorners(imageData);
+    if (detected) {
+      boardCalib.applyCorners(detected.corners);
+      if (compact) setMobileTab("game");
+    }
+  }, [captureFrame, boardCalib, compact, setMobileTab]);
+
+  useEffect(() => {
+    if (
+      !video.state.active ||
+      boardCalib.calibrationPhase !== "adjust" ||
+      autoBoardTriedRef.current
+    ) {
+      return;
+    }
+    autoBoardTriedRef.current = true;
+    const id = window.setTimeout(() => handleAutoDetectBoard(), 900);
+    return () => window.clearTimeout(id);
+  }, [video.state.active, boardCalib.calibrationPhase, handleAutoDetectBoard]);
 
   useEffect(() => {
     if (!boardCalib.isPlaying || !boardDetection.stable) return;
@@ -293,140 +341,157 @@ export function TableApp() {
     [mode],
   );
 
+  const diceActive = boardCalib.calibrationPhase === "preview" || boardCalib.isPlaying;
+
   return (
     <div className={styles.app}>
-      <main className={layoutClass}>
-        <section className={styles.stage} aria-label="Vue plateau">
-          <VideoPanel
-            videoRef={video.videoRef}
-            sourceKind={video.state.kind}
-            youtubeInput={youtubeUrl}
-            active={video.state.active}
-            detectionFrame={detection.lastFrame}
-            showOverlay={detection.liveMode}
-            detectionStatus={detection.status}
-            fillStage
-            calibration={boardCalib.calibration}
-            calibrationPhase={boardCalib.calibrationPhase}
-            onCornerMove={boardCalib.setCorner}
-            showCalibration={!boardCalib.isPlaying}
-          />
-          {!video.state.active && video.state.error && (
-            <p className={styles.cameraError}>{video.state.error}</p>
-          )}
-        </section>
-
-        <aside className={styles.sidebar}>
-          <GameSessionPanel
-            playerWhite={session.playerWhite}
-            playerBlack={session.playerBlack}
-            onPlayerWhiteChange={session.setPlayerWhite}
-            onPlayerBlackChange={session.setPlayerBlack}
-            sessionDate={session.sessionDate}
-            elapsedMs={session.elapsedMs}
-            streamActive={video.state.active}
-            detectionCount={history.length}
-            liveMode={detection.liveMode}
-          />
-
-          <LiveConnectPanel
-            roomId={roomId}
-            onRoomIdChange={setRoomId}
-            liveEnabled={liveEnabled}
-            onLiveEnabledChange={setLiveEnabled}
-            connected={live.connected}
-            peerCount={live.peerCount}
-            error={live.error}
-            layout={spectatorLayout}
-            onLayoutChange={setSpectatorLayout}
-            hostName={hostName}
-            onHostNameChange={setHostName}
-          />
-
-          <CalibrationPanel
-            calibrationPhase={boardCalib.calibrationPhase}
-            gamePhase={boardCalib.gamePhase}
-            preview={boardDetection.preview}
-            confidence={boardDetection.confidence}
-            detecting={boardDetection.detecting}
-            onConfirmPreview={boardCalib.confirmPreview}
-            onStartGame={handleStartGame}
-            onBackToAdjust={boardCalib.backToAdjust}
-            onReset={boardCalib.resetCalibration}
-            onApplyStandard={applyStandardBoard}
-          />
-
-          <StrategyPanel
-            advice={boardCalib.isPlaying ? advice : null}
-            dice={boardCalib.isPlaying ? detection.diceValues : []}
-            detecting={detection.detecting}
-            status={boardCalib.isPlaying ? detection.status : "idle"}
-            confirmed={detection.status === "confirmed"}
-          />
-
-          <BackgammonBoard
-            points={displayBoard.points}
-            barWhite={displayBoard.barWhite}
-            barBlack={displayBoard.barBlack}
-            offWhite={displayBoard.offWhite}
-            offBlack={displayBoard.offBlack}
-            compact
-            live={displayBoard.live || boardCalib.calibrationPhase === "preview"}
-            confidence={displayBoard.confidence}
-            pointConfidence={displayBoard.pointConfidence}
-          />
-
-          <MoveHistory entries={history.slice(0, 8)} />
-
-          {live.connected && liveEnabled && (
-            <LiveChat
-              messages={live.chat}
-              onSend={live.sendChat}
-              author={chatAuthor}
-              onAuthorChange={setChatAuthor}
+      <div className={compact ? styles.compactLayout : undefined}>
+        <main className={layoutClass}>
+          <section
+            className={`${styles.stage} ${compact && mobileTab !== "camera" ? styles.stageHidden : ""}`}
+            aria-label="Vue plateau"
+          >
+            <VideoPanel
+              videoRef={video.videoRef}
+              sourceKind={video.state.kind}
+              youtubeInput={youtubeUrl}
+              active={video.state.active}
+              detectionFrame={detection.lastFrame}
+              showOverlay={detection.liveMode && diceActive}
+              detectionStatus={detection.status}
+              fillStage
+              calibration={boardCalib.calibration}
+              calibrationPhase={boardCalib.calibrationPhase}
+              onCornerMove={boardCalib.setCorner}
+              showCalibration={!boardCalib.isPlaying}
             />
-          )}
+            {!video.state.active && video.state.error && (
+              <p className={styles.cameraError}>{video.state.error}</p>
+            )}
+          </section>
 
-          <SidebarControls
-            state={video.state}
-            devices={cameras.devices}
-            devicesReady={cameras.ready}
-            onRequestPermission={cameras.requestPermission}
-            detecting={detection.detecting}
-            liveMode={detection.liveMode}
-            useOnnx={detection.useOnnx}
-            detectionHz={detection.detectionHz}
-            streamActiveForDetection={streamActiveForDetection}
-            liveRoomId={roomId}
-            onStartCamera={(id, label) => video.startCamera(id, label)}
-            onStartObs={() => setObsOpen(true)}
-            onStartHls={(url) => video.startHls(url)}
-            onStartMjpeg={(url) => video.startMjpeg(url)}
-            onStartYouTube={handleYouTube}
-            onStop={video.stop}
-            onDetectOnce={() => void detection.runOnce()}
-            onToggleLive={() => detection.setLiveMode(!detection.liveMode)}
-            onToggleOnnx={detection.setUseOnnx}
-          />
+          <aside
+            className={`${styles.sidebar} ${compact ? styles.sidebarCompact : ""} ${compact && mobileTab !== "game" ? styles.sidebarHidden : ""}`}
+          >
+            <div className={styles.gameEssentials}>
+              <GameSessionPanel
+                playerWhite={session.playerWhite}
+                playerBlack={session.playerBlack}
+                onPlayerWhiteChange={session.setPlayerWhite}
+                onPlayerBlackChange={session.setPlayerBlack}
+                sessionDate={session.sessionDate}
+                elapsedMs={session.elapsedMs}
+                streamActive={video.state.active}
+                detectionCount={history.length}
+                liveMode={detection.liveMode}
+              />
 
-          <div className={styles.modeToggle}>
-            <button
-              type="button"
-              className={mode === "player" ? styles.activeMode : ""}
-              onClick={() => setMode("player")}
-            >
-              Table
-            </button>
-            <button
-              type="button"
-              className={mode === "streamer" ? styles.activeMode : ""}
-              onClick={() => setMode("streamer")}
-            >
-              OBS overlay
-            </button>
-          </div>
-        </aside>
-      </main>
+              <StrategyPanel
+                advice={boardCalib.isPlaying ? advice : null}
+                dice={diceActive ? detection.diceValues : []}
+                detecting={detection.detecting}
+                status={diceActive ? detection.status : "idle"}
+                confirmed={detection.status === "confirmed"}
+                compact={compact}
+              />
+
+              <BackgammonBoard
+                points={displayBoard.points}
+                barWhite={displayBoard.barWhite}
+                barBlack={displayBoard.barBlack}
+                offWhite={displayBoard.offWhite}
+                offBlack={displayBoard.offBlack}
+                compact
+                live={displayBoard.live || boardCalib.calibrationPhase === "preview"}
+                confidence={displayBoard.confidence}
+                pointConfidence={displayBoard.pointConfidence}
+              />
+
+              <CalibrationPanel
+                calibrationPhase={boardCalib.calibrationPhase}
+                gamePhase={boardCalib.gamePhase}
+                preview={boardDetection.preview}
+                confidence={boardDetection.confidence}
+                detecting={boardDetection.detecting}
+                onAutoDetect={handleAutoDetectBoard}
+                onConfirmPreview={boardCalib.confirmPreview}
+                onStartGame={handleStartGame}
+                onBackToAdjust={boardCalib.backToAdjust}
+                onReset={boardCalib.resetCalibration}
+                onApplyStandard={applyStandardBoard}
+              />
+            </div>
+
+            <div className={styles.gameAdvanced}>
+              <LiveConnectPanel
+                roomId={roomId}
+                onRoomIdChange={setRoomId}
+                liveEnabled={liveEnabled}
+                onLiveEnabledChange={setLiveEnabled}
+                connected={live.connected}
+                peerCount={live.peerCount}
+                error={live.error}
+                layout={spectatorLayout}
+                onLayoutChange={setSpectatorLayout}
+                hostName={hostName}
+                onHostNameChange={setHostName}
+              />
+
+              <MoveHistory entries={history.slice(0, 8)} />
+
+              {live.connected && liveEnabled && (
+                <LiveChat
+                  messages={live.chat}
+                  onSend={live.sendChat}
+                  author={chatAuthor}
+                  onAuthorChange={setChatAuthor}
+                />
+              )}
+
+              <SidebarControls
+                state={video.state}
+                devices={cameras.devices}
+                devicesReady={cameras.ready}
+                onRequestPermission={cameras.requestPermission}
+                detecting={detection.detecting}
+                liveMode={detection.liveMode}
+                useOnnx={detection.useOnnx}
+                detectionHz={detection.detectionHz}
+                streamActiveForDetection={streamActiveForDetection}
+                liveRoomId={roomId}
+                onStartCamera={(id, label) => video.startCamera(id, label)}
+                onStartObs={() => setObsOpen(true)}
+                onStartHls={(url) => video.startHls(url)}
+                onStartMjpeg={(url) => video.startMjpeg(url)}
+                onStartYouTube={handleYouTube}
+                onStop={video.stop}
+                onDetectOnce={() => void detection.runOnce(true)}
+                onToggleLive={() => detection.setLiveMode(!detection.liveMode)}
+                onToggleOnnx={detection.setUseOnnx}
+              />
+
+              <div className={styles.modeToggle}>
+                <button
+                  type="button"
+                  className={mode === "player" ? styles.activeMode : ""}
+                  onClick={() => setMode("player")}
+                >
+                  Table
+                </button>
+                <button
+                  type="button"
+                  className={mode === "streamer" ? styles.activeMode : ""}
+                  onClick={() => setMode("streamer")}
+                >
+                  OBS overlay
+                </button>
+              </div>
+            </div>
+          </aside>
+        </main>
+
+        {compact && <MobileTabBar tab={mobileTab} onChange={setMobileTab} />}
+      </div>
 
       {mode === "streamer" && (
         <p className={styles.streamerHint}>

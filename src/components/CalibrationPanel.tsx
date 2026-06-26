@@ -7,6 +7,7 @@ interface Props {
   preview: BoardDetectionResult | null;
   confidence: number;
   detecting: boolean;
+  onAutoDetect: () => void;
   onConfirmPreview: () => void;
   onStartGame: () => void;
   onBackToAdjust: () => void;
@@ -20,6 +21,7 @@ export function CalibrationPanel({
   preview,
   confidence,
   detecting,
+  onAutoDetect,
   onConfirmPreview,
   onStartGame,
   onBackToAdjust,
@@ -45,8 +47,13 @@ export function CalibrationPanel({
             <>
               <ol className={styles.steps}>
                 <li>Placez le plateau entier dans le cadre vidéo</li>
-                <li>Glissez les 4 coins (HG, HD, BD, BG) sur les bords du tapis</li>
-                <li>Vérifiez l’aperçu des pions détectés ci-dessous</li>
+                <li>
+                  <button type="button" className={styles.autoBtn} onClick={onAutoDetect}>
+                    Auto-détecter le tapis
+                  </button>{" "}
+                  ou ajustez les 4 coins à la main
+                </li>
+                <li>Onglet « Partie & analyse » → vérifiez les pions détectés</li>
               </ol>
               <button type="button" className="primary" onClick={onConfirmPreview}>
                 Valider l’alignement

@@ -8,6 +8,7 @@ interface Props {
   status: DetectionStatus;
   confirmed: boolean;
   variant?: "full" | "dice-only";
+  compact?: boolean;
 }
 
 const STATUS_LABELS: Record<DetectionStatus, string> = {
@@ -18,11 +19,11 @@ const STATUS_LABELS: Record<DetectionStatus, string> = {
   confirmed: "Lecture validée",
 };
 
-export function StrategyPanel({ advice, dice, detecting, status, confirmed, variant = "full" }: Props) {
+export function StrategyPanel({ advice, dice, detecting, status, confirmed, variant = "full", compact = false }: Props) {
   const diceOnly = variant === "dice-only";
 
   return (
-    <section className={styles.panel}>
+    <section className={`${styles.panel} ${compact ? styles.compact : ""}`}>
       {!diceOnly && (
         <header className={styles.header}>
           <h2>Analyse stratégique</h2>

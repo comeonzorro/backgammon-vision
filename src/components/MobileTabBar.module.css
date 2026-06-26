@@ -1,0 +1,28 @@
+.bar {
+  display: none;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.bar button {
+  min-height: 2.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.active {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #1a1200 !important;
+}
+
+@media (max-width: 960px) {
+  .bar {
+    display: grid;
+  }
+}

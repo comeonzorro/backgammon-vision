@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { detectDiceFromFrame } from "../lib/diceDetector";
-import { frameMotionScore } from "../lib/diceVision";
+import { getDiceSearchZone } from "../lib/autoCalibrateBoard";
+import type { BoardCalibration } from "../types/board";
 import type { ConfirmedRoll, DetectionFrame, DetectionStatus } from "../types";
 
-const DETECTION_HZ = 2;
+const DETECTION_HZ = 2.5;
 const INTERVAL_MS = Math.round(1000 / DETECTION_HZ);
-const STABLE_FRAMES = 3;
-const MIN_CONFIDENCE = 0.58;
-const MOTION_THRESHOLD = 11;
-const REARM_MS = 3500;
+const STABLE_FRAMES = 2;
+const MIN_CONFIDENCE = 0.42;
+const MOTION_THRESHOLD = 24;
 
 function rollKey(dice: number[]): string {
   if (dice.length < 2) return dice.join("-");
@@ -18,6 +18,7 @@ function rollKey(dice: number[]): string {
 export function useDiceDetection(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   streamActive: boolean,
+  calibration: BoardCalibration | null,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevGrayRef = useRef<Uint8Array | null>(null);
@@ -54,11 +55,16 @@ export function useDiceDetection(
     ctx.drawImage(video, 0, 0, w, h);
     const imageData = ctx.getImageData(0, 0, w, h);
 
-    const gray = downscaleGrayQuick(imageData);
-    const motion = frameMotionScore(prevGrayRef.current, gray);
+    const gray = downscaleGrayInZone(imageData, calibration);
+    let motion = 0;
+    if (prevGrayRef.current && prevGrayRef.current.length === gray.length) {
+      let sum = 0;
+      for (let i = 0; i < gray.length; i++) sum += Math.abs(gray[i] - prevGrayRef.current[i]);
+      motion = sum / gray.length;
+    }
     prevGrayRef.current = gray;
 
-    const result = await detectDiceFromFrame(imageData, { useOnnx });
+    const result = await detectDiceFromFrame(imageData, { useOnnx, calibration });
     result.motionScore = motion;
     setLastFrame(result);
 
@@ -103,29 +109,41 @@ export function useDiceDetection(
     const canConfirm =
       stable &&
       avgConf >= MIN_CONFIDENCE &&
-      (key !== lastConfirmedKeyRef.current || now - lastConfirmedAtRef.current > REARM_MS);
+      (key !== lastConfirmedKeyRef.current || now - lastConfirmedAtRef.current > 2500);
 
     if (canConfirm) {
       lastConfirmedKeyRef.current = key;
       lastConfirmedAtRef.current = now;
       stableBufferRef.current = [];
-      const confirmed: ConfirmedRoll = {
+      setConfirmedRoll({
         timestamp: now,
         dice: values,
         confidence: avgConf,
         frame: result,
-      };
-      setConfirmedRoll(confirmed);
+      });
       setStatus("confirmed");
     }
 
     return result;
-  }, [videoRef, streamActive, useOnnx]);
+  }, [videoRef, streamActive, useOnnx, calibration]);
 
-  const runOnce = useCallback(async () => {
+  const runOnce = useCallback(async (force = false) => {
     setDetecting(true);
     try {
-      await captureAndDetect();
+      const result = await captureAndDetect();
+      if (force && result && result.dice.length >= 2) {
+        const values = result.dice.map((d) => d.value);
+        const avgConf =
+          result.dice.reduce((s, d) => s + d.confidence, 0) / result.dice.length;
+        setConfirmedRoll({
+          timestamp: Date.now(),
+          dice: values,
+          confidence: avgConf,
+          frame: result,
+        });
+        setStatus("confirmed");
+      }
+      return result;
     } finally {
       setDetecting(false);
     }
@@ -181,15 +199,31 @@ export function useDiceDetection(
   };
 }
 
-function downscaleGrayQuick(imageData: ImageData): Uint8Array {
+function downscaleGrayInZone(imageData: ImageData, calibration: BoardCalibration | null): Uint8Array {
   const { width, height, data } = imageData;
-  const sw = Math.max(1, Math.round(width / 8));
-  const sh = Math.max(1, Math.round(height / 8));
+  let x0 = 0;
+  let y0 = 0;
+  let x1 = width;
+  let y1 = height;
+
+  if (calibration) {
+    const zone = getDiceSearchZone(calibration);
+    x0 = Math.floor(Math.min(...zone.map((p) => p.x * width)));
+    y0 = Math.floor(Math.min(...zone.map((p) => p.y * height)));
+    x1 = Math.ceil(Math.max(...zone.map((p) => p.x * width)));
+    y1 = Math.ceil(Math.max(...zone.map((p) => p.y * height)));
+  }
+
+  const rw = Math.max(1, x1 - x0);
+  const rh = Math.max(1, y1 - y0);
+  const sw = Math.max(8, Math.round(rw / 6));
+  const sh = Math.max(8, Math.round(rh / 6));
   const out = new Uint8Array(sw * sh);
+
   for (let y = 0; y < sh; y++) {
-    const sy = Math.min(height - 1, Math.floor((y / sh) * height));
+    const sy = y0 + Math.min(rh - 1, Math.floor((y / sh) * rh));
     for (let x = 0; x < sw; x++) {
-      const sx = Math.min(width - 1, Math.floor((x / sw) * width));
+      const sx = x0 + Math.min(rw - 1, Math.floor((x / sw) * rw));
       const i = (sy * width + sx) * 4;
       out[y * sw + x] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     }

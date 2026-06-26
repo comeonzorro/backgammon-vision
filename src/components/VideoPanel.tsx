@@ -68,8 +68,13 @@ export function VideoPanel({
             />
             <DiceOverlay
               frame={detectionFrame}
-              show={showOverlay && sourceKind !== "youtube" && calibrationPhase === "playing"}
+              show={
+                showOverlay &&
+                sourceKind !== "youtube" &&
+                (calibrationPhase === "playing" || calibrationPhase === "preview")
+              }
               status={detectionStatus}
+              calibration={calibration}
             />
           </>
         )}

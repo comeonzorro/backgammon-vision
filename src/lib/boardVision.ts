@@ -95,101 +95,75 @@ function countCheckersInRegion(
   height: number,
   quad: NormPoint[],
 ): { white: number; black: number; confidence: number } {
-  const px = quad.map((p) => ({ x: p.x * width, y: p.y * height }));
+  const inner = shrinkQuad(quad, 0.28);
+  const px = inner.map((p) => ({ x: p.x * width, y: p.y * height }));
   const minX = clamp(Math.floor(Math.min(...px.map((p) => p.x))), 0, width - 1);
   const maxX = clamp(Math.ceil(Math.max(...px.map((p) => p.x))), 0, width - 1);
   const minY = clamp(Math.floor(Math.min(...px.map((p) => p.y))), 0, height - 1);
   const maxY = clamp(Math.ceil(Math.max(...px.map((p) => p.y))), 0, height - 1);
 
-  const rw = maxX - minX + 1;
-  const rh = maxY - minY + 1;
-  if (rw < 4 || rh < 4) return { white: 0, black: 0, confidence: 0 };
+  const cx = Math.round((minX + maxX) / 2);
+  const profileW: number[] = [];
+  const profileB: number[] = [];
 
-  const samples: number[] = [];
-  for (let y = minY; y <= maxY; y += 2) {
-    for (let x = minX; x <= maxX; x += 2) {
-      if (!pointInQuad(x, y, px)) continue;
-      const i = (y * width + x) * 4;
-      samples.push(luminance(data[i], data[i + 1], data[i + 2]));
-    }
+  for (let y = minY; y <= maxY; y++) {
+    if (!pointInQuad(cx, y, px)) continue;
+    const i = (y * width + cx) * 4;
+    profileW.push(luminance(data[i], data[i + 1], data[i + 2]));
   }
 
-  if (samples.length < 8) return { white: 0, black: 0, confidence: 0 };
-
-  const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
-  const whiteTh = Math.max(130, mean + 18);
-  const blackTh = Math.min(110, mean - 22);
-
-  const mw = Math.ceil(rw / 2);
-  const mh = Math.ceil(rh / 2);
-  const whiteMask = new Uint8Array(mw * mh);
-  const blackMask = new Uint8Array(mw * mh);
-
-  for (let y = minY; y <= maxY; y += 2) {
-    for (let x = minX; x <= maxX; x += 2) {
-      if (!pointInQuad(x, y, px)) continue;
-      const i = (y * width + x) * 4;
-      const lum = luminance(data[i], data[i + 1], data[i + 2]);
-      const mx = (x - minX) >> 1;
-      const my = (y - minY) >> 1;
-      const mi = my * mw + mx;
-      if (lum >= whiteTh) whiteMask[mi] = 1;
-      if (lum <= blackTh) blackMask[mi] = 1;
-    }
+  for (let x = minX; x <= maxX; x++) {
+    const midY = Math.round((minY + maxY) / 2);
+    if (!pointInQuad(x, midY, px)) continue;
+    const i = (midY * width + x) * 4;
+    profileB.push(luminance(data[i], data[i + 1], data[i + 2]));
   }
 
-  const cellArea = mw * mh;
-  const minBlob = Math.max(3, cellArea * 0.015);
-  const maxBlob = cellArea * 0.35;
+  const prof = profileW.length >= 6 ? profileW : profileB.length >= 6 ? profileB : profileW;
+  if (prof.length < 4) return { white: 0, black: 0, confidence: 0 };
 
-  const whiteBlobs = countBlobs(whiteMask, mw, mh, minBlob, maxBlob);
-  const blackBlobs = countBlobs(blackMask, mw, mh, minBlob, maxBlob);
+  const mean = prof.reduce((a, b) => a + b, 0) / prof.length;
+  const whitePeaks = countPeaks(prof, true, mean);
+  const blackPeaks = countPeaks(prof, false, mean);
 
-  const white = whiteBlobs.length;
-  const black = blackBlobs.length;
-  const blobScore = Math.min(1, (whiteBlobs.length + blackBlobs.length) > 0 ? 0.55 : 0.25);
-  const contrast = Math.min(1, Math.abs(mean - 128) / 64);
-  const confidence = Math.min(0.92, 0.35 + blobScore * 0.35 + contrast * 0.22);
+  const white = whitePeaks;
+  const black = blackPeaks;
+  const dominant = white >= black ? white : black;
+  const confidence =
+    dominant > 0
+      ? Math.min(0.9, 0.42 + dominant * 0.07 + Math.min(0.2, Math.abs(mean - 128) / 200))
+      : 0.15;
 
-  return { white, black, confidence };
+  return {
+    white: white > black ? white : 0,
+    black: black > white ? black : 0,
+    confidence,
+  };
 }
 
-function countBlobs(
-  mask: Uint8Array,
-  w: number,
-  h: number,
-  minArea: number,
-  maxArea: number,
-): { area: number }[] {
-  const visited = new Uint8Array(w * h);
-  const blobs: { area: number }[] = [];
+function shrinkQuad(quad: NormPoint[], amount: number): NormPoint[] {
+  const cx = quad.reduce((s, p) => s + p.x, 0) / quad.length;
+  const cy = quad.reduce((s, p) => s + p.y, 0) / quad.length;
+  return quad.map((p) => ({
+    x: p.x + (cx - p.x) * amount,
+    y: p.y + (cy - p.y) * amount,
+  }));
+}
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const start = y * w + x;
-      if (!mask[start] || visited[start]) continue;
-      let area = 0;
-      const stack = [start];
-      visited[start] = 1;
-      while (stack.length) {
-        const idx = stack.pop()!;
-        area++;
-        const cx = idx % w;
-        const cy = (idx / w) | 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-          const nx = cx + dx;
-          const ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const ni = ny * w + nx;
-          if (!mask[ni] || visited[ni]) continue;
-          visited[ni] = 1;
-          stack.push(ni);
-        }
-      }
-      if (area >= minArea && area <= maxArea) blobs.push({ area });
+function countPeaks(profile: number[], white: boolean, mean: number): number {
+  const th = white ? Math.max(145, mean + 25) : Math.min(105, mean - 25);
+  let peaks = 0;
+  let inBand = false;
+  for (const v of profile) {
+    const hit = white ? v >= th : v <= th;
+    if (hit && !inBand) {
+      peaks++;
+      inBand = true;
+    } else if (!hit) {
+      inBand = false;
     }
   }
-  return blobs;
+  return Math.min(15, peaks);
 }
 
 function pointInQuad(x: number, y: number, quad: { x: number; y: number }[]): boolean {
