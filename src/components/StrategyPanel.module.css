@@ -1,0 +1,134 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.header h2 {
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+
+.pulse {
+  font-size: 0.75rem;
+  color: var(--success);
+  animation: pulse 1s ease infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.4; }
+}
+
+.diceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.diceLabel {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diceFaces {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.die {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  background: var(--white-stone);
+  color: #111;
+  font-weight: 800;
+  font-size: 1.25rem;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+.metricRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.metric {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.metricLabel {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.metricValue {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.danger {
+  font-weight: 700;
+  color: var(--danger);
+  text-transform: capitalize;
+}
+
+.block h3 {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.move {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.comment {
+  font-size: 0.9rem;
+  font-style: italic;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.list li + li {
+  margin-top: 0.25rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}

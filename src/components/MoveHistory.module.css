@@ -1,0 +1,58 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.panel h2 {
+  font-size: 0.95rem;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+time {
+  color: var(--muted);
+  grid-row: span 2;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.dice {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.move {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.75rem;
+}

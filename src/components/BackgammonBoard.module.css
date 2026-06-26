@@ -1,0 +1,151 @@
+.board {
+  background: linear-gradient(165deg, var(--felt-light), var(--felt));
+  border: 3px solid #5c3d1e;
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  box-shadow: inset 0 2px 20px rgba(0, 0, 0, 0.35);
+}
+
+.compact {
+  padding: 0.35rem;
+}
+
+.offArea {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 0 0.25rem 0.35rem;
+}
+
+.inner {
+  display: grid;
+  grid-template-columns: 1fr 28px 1fr;
+  gap: 4px;
+  min-height: 140px;
+}
+
+.compact .inner {
+  min-height: 100px;
+}
+
+.half {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 4px 0;
+}
+
+.barStack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.point {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 70px;
+}
+
+.compact .point {
+  min-height: 48px;
+}
+
+.point.up {
+  justify-content: flex-end;
+}
+
+.point.down {
+  justify-content: flex-start;
+}
+
+.triangle {
+  position: absolute;
+  width: 100%;
+  height: 85%;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  opacity: 0.85;
+}
+
+.point.alt .triangle {
+  background: #c4a574;
+}
+
+.point:not(.alt) .triangle {
+  background: #8b5a2b;
+}
+
+.point.up .triangle {
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+.stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+  margin: 4px 0;
+}
+
+.point.up .stack {
+  flex-direction: column-reverse;
+}
+
+.checker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+  margin-top: -10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+.compact .checker {
+  width: 12px;
+  height: 12px;
+  margin-top: -7px;
+}
+
+.checker:first-child {
+  margin-top: 0;
+}
+
+.white {
+  background: radial-gradient(circle at 30% 30%, #fff, var(--white-stone));
+}
+
+.black {
+  background: radial-gradient(circle at 30% 30%, #444, var(--black-stone));
+}
+
+.count {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text);
+  text-shadow: 0 1px 2px #000;
+}
+
+.pointNum {
+  font-size: 0.55rem;
+  color: rgba(255, 255, 255, 0.35);
+  position: absolute;
+  bottom: 2px;
+}
+
+.point.down .pointNum {
+  top: 2px;
+  bottom: auto;
+}

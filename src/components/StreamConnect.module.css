@@ -1,0 +1,72 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.live {
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 0.8rem;
+  animation: blink 1.2s ease infinite;
+}
+
+.off {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+@keyframes blink {
+  50% { opacity: 0.5; }
+}
+
+.label {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+}
+
+.stop {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.ytRow {
+  margin-top: 0.75rem;
+}
+
+.sdp {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sdp label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.sdp textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}

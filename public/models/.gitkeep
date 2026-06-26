@@ -1,0 +1,2 @@
+Place your YOLO ONNX model here as `dice-yolo.onnx`.
+The app checks for this file at runtime and falls back to heuristic detection if absent.

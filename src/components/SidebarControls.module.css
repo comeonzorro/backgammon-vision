@@ -1,0 +1,44 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detectBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.detectBar button {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.liveOn {
+  border-color: var(--success) !important;
+  color: var(--success);
+}
+
+.onnxToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.sourcesToggle {
+  width: 100%;
+  text-align: left;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: transparent;
+  border-style: dashed;
+}
