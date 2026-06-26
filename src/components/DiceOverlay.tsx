@@ -1,17 +1,26 @@
-import type { DetectionFrame } from "../types";
+import type { DetectionFrame, DetectionStatus } from "../types";
 import styles from "./DiceOverlay.module.css";
 
 interface Props {
   frame: DetectionFrame | null;
   show: boolean;
+  status: DetectionStatus;
 }
 
-export function DiceOverlay({ frame, show }: Props) {
-  if (!show || !frame) return null;
+export function DiceOverlay({ frame, show, status }: Props) {
+  if (!show) return null;
+
+  const showGuide = status === "searching" || status === "tracking";
 
   return (
     <div className={styles.overlay}>
-      {frame.dice.map((d, i) => (
+      {showGuide && (
+        <div className={styles.guideZone} aria-hidden>
+          <span className={styles.guideLabel}>Zone de lecture des dés</span>
+        </div>
+      )}
+
+      {frame?.dice.map((d, i) => (
         <div
           key={i}
           className={styles.box}
@@ -27,8 +36,10 @@ export function DiceOverlay({ frame, show }: Props) {
           </span>
         </div>
       ))}
+
       <span className={styles.badge}>
-        YOLO {frame.source} · {new Date(frame.timestamp).toLocaleTimeString("fr-FR")}
+        CV caméra
+        {frame ? ` · ${new Date(frame.timestamp).toLocaleTimeString("fr-FR")}` : ""}
       </span>
     </div>
   );

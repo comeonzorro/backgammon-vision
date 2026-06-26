@@ -11,6 +11,23 @@ Webapp pour filmer une partie de backgammon depuis un téléphone monté au-dess
 
 Au lancement sur mobile, la caméra arrière démarre automatiquement et la détection live s'active dès que le flux est prêt.
 
+## Lecture des dés (caméra uniquement)
+
+Sans capteur externe, l'app analyse le flux vidéo dans le navigateur :
+
+1. **Repérage** des zones blanches (dés sur le tapis)
+2. **Comptage des points** (pip counting) sur chaque dé
+3. **Stabilisation** : lecture validée seulement quand les 2 dés sont immobiles (~1,5 s)
+
+**Conditions pour une bonne lecture :**
+- Dés **blancs à points noirs** (standard backgammon)
+- **Éclairage uniforme**, sans ombre forte
+- Téléphone **fixe** au-dessus du plateau
+- Dés **immobiles** dans la zone centrale (cadre jaune à l'écran)
+- Éviter mains/objets dans le cadre au moment de la lecture
+
+L'option ONNX reste disponible pour un modèle YOLO entraîné plus tard (plus robuste en conditions difficiles).
+
 ## Fonctionnalités V1
 
 | Module | Description |

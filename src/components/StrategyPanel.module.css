@@ -132,3 +132,22 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+.statusHint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.statusOk {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.diePreview {
+  opacity: 0.72;
+  outline: 2px dashed var(--accent-dim);
+}

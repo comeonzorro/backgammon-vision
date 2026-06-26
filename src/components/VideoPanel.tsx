@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { extractYouTubeVideoId } from "../lib/streamSources";
-import type { DetectionFrame } from "../types";
+import type { DetectionFrame, DetectionStatus } from "../types";
 import { DiceOverlay } from "./DiceOverlay";
 import styles from "./VideoPanel.module.css";
 
@@ -11,6 +11,7 @@ interface Props {
   active: boolean;
   detectionFrame: DetectionFrame | null;
   showOverlay: boolean;
+  detectionStatus?: DetectionStatus;
   fillStage?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function VideoPanel({
   active,
   detectionFrame,
   showOverlay,
+  detectionStatus = "idle",
   fillStage = false,
 }: Props) {
   const ytId =
@@ -48,7 +50,11 @@ export function VideoPanel({
               muted
               autoPlay
             />
-            <DiceOverlay frame={detectionFrame} show={showOverlay && sourceKind !== "youtube"} />
+            <DiceOverlay
+              frame={detectionFrame}
+              show={showOverlay && sourceKind !== "youtube"}
+              status={detectionStatus}
+            />
           </>
         )}
         {!active && (

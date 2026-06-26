@@ -51,10 +51,12 @@ export default function App() {
   }, [streamActiveForDetection]);
 
   useEffect(() => {
-    if (!detection.lastFrame || detection.diceValues.length === 0) return;
+    if (!detection.confirmedRoll) return;
 
-    const dice = detection.diceValues.slice(0, 2);
-    const source = detection.lastFrame.source;
+    const { dice, frame } = detection.confirmedRoll;
+    if (dice.length < 2) return;
+
+    const source = frame.source;
     setSnapshot((prev) => {
       const next = snapshotFromDice(dice, prev);
       const strat = analyzePosition(next, dice);
@@ -63,7 +65,7 @@ export default function App() {
         {
           id: crypto.randomUUID(),
           timestamp: Date.now(),
-          label: `Détection ${source}`,
+          label: `Lecture caméra (${source})`,
           dice,
           move: strat.bestMove,
         },
@@ -71,7 +73,7 @@ export default function App() {
       ]);
       return next;
     });
-  }, [detection.lastFrame?.timestamp]);
+  }, [detection.confirmedRoll?.timestamp]);
 
   const handleYouTube = (url: string) => {
     setYoutubeUrl(url);
@@ -94,6 +96,7 @@ export default function App() {
             active={video.state.active}
             detectionFrame={detection.lastFrame}
             showOverlay={detection.liveMode}
+            detectionStatus={detection.status}
             fillStage
           />
 
@@ -119,6 +122,8 @@ export default function App() {
             advice={advice}
             dice={detection.diceValues}
             detecting={detection.detecting}
+            status={detection.status}
+            confirmed={detection.status === "confirmed"}
           />
 
           <BackgammonBoard

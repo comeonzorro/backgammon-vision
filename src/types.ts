@@ -16,10 +16,25 @@ export interface DiceDetection {
   height: number;
 }
 
+export type DetectionStatus =
+  | "idle"
+  | "searching"
+  | "rolling"
+  | "tracking"
+  | "confirmed";
+
 export interface DetectionFrame {
   timestamp: number;
   dice: DiceDetection[];
-  source: "mock" | "onnx" | "stub";
+  source: "camera-cv" | "onnx";
+  motionScore?: number;
+}
+
+export interface ConfirmedRoll {
+  timestamp: number;
+  dice: number[];
+  confidence: number;
+  frame: DetectionFrame;
 }
 
 export interface BackgammonPoint {

@@ -69,7 +69,7 @@ export function SidebarControls({
             checked={useOnnx}
             onChange={(e) => onToggleOnnx(e.target.checked)}
           />
-          ONNX
+          ONNX (optionnel)
         </label>
       </div>
 

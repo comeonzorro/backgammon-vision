@@ -1,13 +1,23 @@
-import type { StrategyAdvice } from "../types";
+import type { DetectionStatus, StrategyAdvice } from "../types";
 import styles from "./StrategyPanel.module.css";
 
 interface Props {
   advice: StrategyAdvice | null;
   dice: number[];
   detecting: boolean;
+  status: DetectionStatus;
+  confirmed: boolean;
 }
 
-export function StrategyPanel({ advice, dice, detecting }: Props) {
+const STATUS_LABELS: Record<DetectionStatus, string> = {
+  idle: "Caméra inactive",
+  searching: "Cadrez 2 dés blancs au centre du plateau",
+  rolling: "Dés en mouvement — attendez l'arrêt",
+  tracking: "Analyse en cours…",
+  confirmed: "Lecture validée",
+};
+
+export function StrategyPanel({ advice, dice, detecting, status, confirmed }: Props) {
   return (
     <section className={styles.panel}>
       <header className={styles.header}>
@@ -15,17 +25,24 @@ export function StrategyPanel({ advice, dice, detecting }: Props) {
         {detecting && <span className={styles.pulse}>Calcul…</span>}
       </header>
 
+      <p className={confirmed ? styles.statusOk : styles.statusHint}>
+        {STATUS_LABELS[status]}
+      </p>
+
       <div className={styles.diceRow}>
         <span className={styles.diceLabel}>Dés lus</span>
         <div className={styles.diceFaces}>
           {dice.length > 0 ? (
             dice.map((v, i) => (
-              <span key={i} className={styles.die}>
+              <span
+                key={i}
+                className={confirmed ? styles.die : `${styles.die} ${styles.diePreview}`}
+              >
                 {v}
               </span>
             ))
           ) : (
-            <span className={styles.muted}>En attente de détection visuelle</span>
+            <span className={styles.muted}>Placez les dés sous la caméra</span>
           )}
         </div>
       </div>
@@ -63,8 +80,8 @@ export function StrategyPanel({ advice, dice, detecting }: Props) {
         </>
       ) : (
         <p className={styles.muted}>
-          Lancez la détection sur le flux vidéo pour obtenir une recommandation de coup et un
-          commentaire pour les spectateurs.
+          Une fois les dés lus et immobiles, l'analyse et le commentaire spectateur s'affichent
+          ici.
         </p>
       )}
     </section>
