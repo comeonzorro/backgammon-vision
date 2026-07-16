@@ -64,6 +64,8 @@ export interface StrategyAdvice {
   spectatorComment: string;
   alternatives: string[];
   riskLevel: "low" | "medium" | "high";
+  pipCounts?: { white: number; black: number };
+  mover?: "white" | "black";
 }
 
 export interface HistoryEntry {

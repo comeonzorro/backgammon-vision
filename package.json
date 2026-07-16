@@ -8,6 +8,7 @@
     "dev:live": "npm run live:server & vite",
     "live:server": "cd server && npm install && npm start",
     "build": "tsc --noEmit && vite build",
+    "check:engine": "tsx scripts/checkEngine.ts",
     "build:subdir": "BASE_PATH=/backgammon-vision/ npm run build",
     "preview": "vite preview",
     "preview:subdir": "BASE_PATH=/backgammon-vision/ npm run build && vite preview"
@@ -22,6 +23,7 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.23.1",
     "typescript": "~5.7.2",
     "vite": "^6.2.0"
   },

@@ -1,22 +1,22 @@
 import type { BackgammonPoint, GameSnapshot, StrategyAdvice } from "../types";
+import { analyzeRoll, buildCommentary, inferPlayedMove } from "./bg/analysis";
+import type { BoardLike, Player } from "./bg/engine";
+import { pipCounts, playerLabel, standardBoard } from "./bg/engine";
+
+export type { InferredMove } from "./bg/analysis";
 
 export function createInitialBoard(): BackgammonPoint[] {
-  const points: BackgammonPoint[] = Array.from({ length: 24 }, (_, i) => ({
-    index: i + 1,
-    white: 0,
-    black: 0,
-  }));
+  return standardBoard().points;
+}
 
-  points[0] = { index: 1, white: 0, black: 2 };
-  points[4] = { index: 5, white: 0, black: 5 };
-  points[6] = { index: 7, white: 0, black: 3 };
-  points[11] = { index: 12, white: 5, black: 0 };
-  points[12] = { index: 13, white: 0, black: 5 };
-  points[16] = { index: 17, white: 3, black: 0 };
-  points[18] = { index: 19, white: 5, black: 0 };
-  points[23] = { index: 24, white: 2, black: 0 };
-
-  return points;
+function snapshotToBoard(s: GameSnapshot): BoardLike {
+  return {
+    points: s.points,
+    barWhite: s.barWhite,
+    barBlack: s.barBlack,
+    offWhite: s.offWhite,
+    offBlack: s.offBlack,
+  };
 }
 
 export function snapshotFromDice(
@@ -35,57 +35,103 @@ export function snapshotFromDice(
     activePlayer: "white" as const,
   };
 
+  // Premier jet de la partie : pas d'alternance (attribué au joueur courant).
+  const nextPlayer =
+    base.dice.length === 0
+      ? base.activePlayer
+      : base.activePlayer === "white"
+        ? "black"
+        : "white";
+
   return {
     ...base,
     id: crypto.randomUUID(),
     timestamp: Date.now(),
     dice,
-    activePlayer: base.activePlayer === "white" ? "black" : "white",
+    activePlayer: nextPlayer,
   };
 }
 
-const COMMENTS = [
-  "Le blanc cherche à verrouiller le point extérieur avant de courir.",
-  "Position équilibrée : les deux camps ont des chances de prime.",
-  "Attention au blott possible sur le 6-point adverse.",
-  "Le détecteur visuel confirme un double — opportunité de frappe.",
-  "Course à la maison : privilégier la sécurité des checkers isolés.",
-];
-
+/**
+ * Analyse réelle du jet : génération complète des coups légaux, évaluation
+ * positionnelle, meilleur coup en notation standard, alternatives classées
+ * par équité et commentaire analytique dérivé de la position.
+ */
 export function analyzePosition(
   snapshot: GameSnapshot,
   dice: number[],
 ): StrategyAdvice {
-  const [d1, d2] = dice.length >= 2 ? dice : [dice[0] ?? 3, dice[1] ?? 1];
-  const isDouble = d1 === d2;
-  const sum = d1 + d2;
+  const mover: Player = snapshot.activePlayer;
+  const board = snapshotToBoard(snapshot);
+  const analysis = analyzeRoll(board, mover, dice);
+  const pips = pipCounts(board);
+  const label = playerLabel(mover);
 
-  const whiteTotal = snapshot.points.reduce((a, p) => a + p.white, 0) + snapshot.barWhite;
-  const blackTotal = snapshot.points.reduce((a, p) => a + p.black, 0) + snapshot.barBlack;
-  const raceAdvantage = whiteTotal < blackTotal ? "blanc" : "noir";
-
-  let bestMove: string;
-  if (isDouble) {
-    bestMove = `Double ${d1} : 13/7, 13/7, 8/2, 8/2 — maximiser le blocage`;
-  } else if (d1 === 6 || d2 === 6) {
-    bestMove = `6/${d1 === 6 ? d1 - d2 || 1 : 6 - d1} puis consolider le 20-point`;
-  } else {
-    bestMove = `13/${13 - d1} 8/${8 - d2} — développement classique`;
+  if (analysis.dance || !analysis.best) {
+    return {
+      bestMove: `${label} : aucun coup possible (dance)`,
+      equity: 0,
+      winChance: 50,
+      spectatorComment: buildCommentary(analysis),
+      alternatives: [],
+      riskLevel: "low",
+      pipCounts: pips,
+      mover,
+    };
   }
 
-  const equity = 0.45 + (sum / 24) * 0.15 + (isDouble ? 0.08 : 0);
-  const winChance = Math.min(0.92, Math.max(0.18, equity + 0.12));
+  const best = analysis.best;
+  const alternatives = analysis.plays.slice(1, 4).map((p) => {
+    const delta = p.equity - best.equity;
+    return `${p.notation} — éq. ${fmtEquity(p.equity)} (Δ ${delta.toFixed(3)})`;
+  });
+
+  const shots = best.features.totalShotRolls;
+  const riskLevel: StrategyAdvice["riskLevel"] =
+    shots === 0 ? "low" : shots <= 12 ? "medium" : "high";
 
   return {
-    bestMove,
-    equity: Math.round(equity * 1000) / 1000,
-    winChance: Math.round(winChance * 100),
-    spectatorComment: `${COMMENTS[sum % COMMENTS.length]} Course favorisée côté ${raceAdvantage}.`,
-    alternatives: [
-      `Slot 5-point : ${d1}/5`,
-      `Split arrière : 24/${24 - d2}`,
-      `Hit & cover si dé ${Math.max(d1, d2)} touche une blotte`,
-    ],
-    riskLevel: isDouble ? "high" : sum >= 9 ? "medium" : "low",
+    bestMove: `${label} : ${best.notation}`,
+    equity: Math.round(best.equity * 1000) / 1000,
+    winChance: Math.round(best.winProb * 100),
+    spectatorComment: buildCommentary(analysis),
+    alternatives,
+    riskLevel,
+    pipCounts: pips,
+    mover,
   };
+}
+
+function fmtEquity(e: number): string {
+  return `${e >= 0 ? "+" : ""}${e.toFixed(3)}`;
+}
+
+/**
+ * Transcription du coup joué : compare la position détectée par la caméra
+ * aux positions légales atteignables et recale sur la plus proche.
+ */
+export function inferMoveFromSnapshots(
+  previous: GameSnapshot,
+  detectedPoints: BackgammonPoint[],
+  detectedBarWhite: number,
+  detectedBarBlack: number,
+  mover: Player,
+  dice: number[],
+) {
+  const prevBoard = snapshotToBoard(previous);
+  const detected: BoardLike = {
+    points: detectedPoints,
+    barWhite: detectedBarWhite,
+    barBlack: detectedBarBlack,
+    // La détection caméra ne voit pas les pions sortis : on les déduit.
+    offWhite: Math.max(
+      0,
+      15 - detectedPoints.reduce((a, p) => a + p.white, 0) - detectedBarWhite,
+    ),
+    offBlack: Math.max(
+      0,
+      15 - detectedPoints.reduce((a, p) => a + p.black, 0) - detectedBarBlack,
+    ),
+  };
+  return inferPlayedMove(prevBoard, detected, mover, dice);
 }

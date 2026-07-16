@@ -15,8 +15,10 @@ export interface SpectatorLayout {
   zones: SpectatorZone[];
 }
 
+// Le mini-plateau et l'historique sont inclus par défaut : la position doit
+// rester visible en diffusion OBS même si le flux vidéo est coupé ou flou.
 export const DEFAULT_SPECTATOR_LAYOUT: SpectatorLayout = {
-  zones: ["video", "brand", "dice", "analysis", "chat"],
+  zones: ["video", "brand", "dice", "analysis", "board", "history", "chat"],
 };
 
 export const ALL_SPECTATOR_ZONES: { id: SpectatorZone; label: string }[] = [
