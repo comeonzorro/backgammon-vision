@@ -1,6 +1,6 @@
 # Backgammon Vision
 
-Webapp pour filmer une partie de backgammon depuis un téléphone monté au-dessus du plateau (caméra arrière), avec lecture visuelle des dés et panneau d'analyse pour les spectateurs.
+Webapp pour filmer une partie de backgammon depuis un téléphone monté au-dessus du plateau (caméra arrière), avec lecture visuelle des dés, transcription des coups en direct et analyse par moteur backgammon intégré (inspiré d'eXtreme Gammon, BG Blitz, Digigammon et GNU Backgammon).
 
 ## Interface (mode table)
 
@@ -17,15 +17,26 @@ Au lancement sur mobile, la caméra arrière démarre automatiquement. **Calibra
 2. **Aperçu** : vérifiez le mini-plateau (détection caméra, même principe que les dés)
 3. **Lancer la partie** : la sidebar passe en **LIVE** (~1 mise à jour/s)
 
+Moteur de lecture des pions (`src/lib/boardVision.ts`) :
+
+1. **Référence tapis** estimée sur chaque image (bande médiane du plateau, médiane robuste)
+2. **Échantillonnage multi-colonnes** le long de l'axe de chaque flèche, de la base vers la pointe
+3. Classification blanc / noir / tapis par écart de **luminance et de chrominance** à la référence
+4. Comptage par **longueur de pile** (≈ 5 pions par flèche), tolérant aux reflets entre pions
+5. **Bear-off déduit** : 15 − pions vus par couleur
+6. **Recalage sur position légale** : après chaque jet, la position détectée est comparée aux coups légaux du moteur ; si elle correspond (à ≤ 2 pions près), la position affichée est recalée sur la position légale exacte — le bruit caméra ne corrompt plus le plateau diffusé
+
 Les cases peu incertaines sont entourées en pointillés. Dés et analyse ne démarrent qu'après « Lancer la partie ».
 
 ## Lecture des dés (caméra uniquement)
 
-Sans capteur externe, l'app analyse le flux vidéo dans le navigateur :
+Moteur CV maison (`src/lib/diceVision.ts`), sans capteur externe :
 
-1. **Repérage** des zones blanches (dés sur le tapis)
-2. **Comptage des points** (pip counting) sur chaque dé
-3. **Stabilisation** : lecture validée quand les 2 dés sont immobiles (~1 s)
+1. **Repérage** des blobs clairs carrés sur le tapis calibré (double seuil : moyenne relevée + percentile)
+2. **Lecture de face** en pleine résolution : seuil d'**Otsu local**, extraction des pips par composantes connexes 8-connexité, filtres géométriques (taille, rondeur, position)
+3. **Validation du motif de face** (1–6), invariante en rotation : pip central, symétrie centrale des paires, colinéarité du 3, double rangée du 6 — un simple comptage de taches est rejeté (ombres, reflets, pions blancs)
+4. **Appariement des 2 dés** : tailles quasi identiques exigées (élimine les faux positifs isolés)
+5. **Stabilisation** : 3 lectures identiques consécutives + score de mouvement nul avant validation
 
 **Conditions pour une bonne lecture :**
 - Dés **blancs à points noirs** (standard backgammon)
@@ -36,6 +47,20 @@ Sans capteur externe, l'app analyse le flux vidéo dans le navigateur :
 - Éviter mains/objets dans le cadre au moment de la lecture
 
 L'option ONNX reste disponible pour un modèle YOLO entraîné plus tard (plus robuste en conditions difficiles).
+
+## Moteur d'analyse & transcription
+
+Moteur backgammon intégré (`src/lib/bg/`), exécuté dans le navigateur :
+
+| Module | Rôle |
+|--------|------|
+| `engine.ts` | Génération **complète des coups légaux** : entrée obligatoire du bar, doubles ×4, bear-off (dé exact + overshoot), usage maximal des dés, règle du dé fort ; notation standard XG/GNU BG (`24/18*/13`, `13/11(2)`, `bar/21`, `6/off`) |
+| `evaluate.ts` | Évaluation positionnelle : course aux pips, blots pondérés par les **tirs directs sur 36**, points construits (5-point, barre, ancres), primes et pions piégés, pions au bar, distribution ; probabilité de gain et équité cubeless |
+| `analysis.ts` | Classement de tous les coups par équité, alternatives avec Δ éq., **commentaire analytique en français** dérivé des faits du coup (frappes, points construits, blots laissés, prime, course), **transcription du coup joué** en comparant la position caméra aux positions légales (style Digigammon/BG Blitz) |
+
+Vérification du moteur : `npm run check:engine` (ouvertures de référence, bar/dance, bear-off, dé fort, symétrie blanc/noir, transcription).
+
+L'historique affiche la partie transcrite en direct : jet lu, meilleur coup théorique, puis coup effectivement joué dès que la position se stabilise.
 
 ## Sources vidéo (USB, sans fil, réseau)
 
@@ -82,10 +107,10 @@ npm run dev           # terminal 2 — VITE_LIVE_WS_URL=ws://localhost:8787 par 
 | Module | Description |
 |--------|-------------|
 | **Sources vidéo** | Caméra / iPhone, OBS Virtual Camera, flux HLS (sortie RTMP relay), YouTube Live (embed), WebRTC P2P (signaling SDP manuel) |
-| **Détection dés** | Capture canvas depuis `<video>`, stub `detectDiceFromFrame()` prêt pour YOLO ONNX |
-| **Board** | Plateau backgammon réaliste (état initial standard) |
-| **Analyse** | Moteur heuristique : meilleur coup, équité, commentaire spectateur |
-| **Historique** | Journal des détections et coups suggérés |
+| **Détection dés** | CV maison : Otsu local + validation géométrique des motifs de faces (fallback YOLO ONNX possible) |
+| **Board** | Position lue par caméra, recalée sur les coups légaux du moteur ; mini-plateau diffusé aussi côté spectateurs/OBS (redondance si le flux vidéo lâche) |
+| **Analyse** | Moteur backgammon intégré : coups légaux, équité, win %, pips, alternatives classées, commentaire analytique |
+| **Historique** | Transcription live : jets lus, meilleur coup théorique, coup effectivement joué |
 | **Modes** | **Joueur** (vidéo + analyse côte à côte) · **Streamer** (layout compact pour Browser Source OBS) |
 
 ## Démarrage
@@ -210,7 +235,7 @@ Un serveur de signaling (WebSocket) pourra remplacer l'échange manuel plus tard
 
 ## Prochaines étapes suggérées
 
-- Entraîner / fine-tuner YOLO sur dés de backgammon
+- Entraîner / fine-tuner YOLO sur dés de backgammon (conditions difficiles)
 - Serveur signaling WebRTC
-- Reconnaissance position des checkers (CV ou saisie assistée)
-- Intégration moteur GNU Backgammon ou API cloud pour l'équité réelle
+- Export des parties transcrites au format `.mat` / `.sgf` (import GNU BG / XG)
+- Brancher GNU Backgammon (WASM ou API) pour une équité réseau de neurones

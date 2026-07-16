@@ -58,7 +58,7 @@ export function StrategyPanel({ advice, dice, detecting, status, confirmed, vari
       {!diceOnly && advice ? (
         <>
           <div className={styles.metricRow}>
-            <Metric label="Équité" value={advice.equity.toFixed(3)} />
+            <Metric label="Équité" value={fmtEquity(advice.equity)} />
             <Metric label="Win %" value={`${advice.winChance}%`} />
             <Metric
               label="Risque"
@@ -66,6 +66,17 @@ export function StrategyPanel({ advice, dice, detecting, status, confirmed, vari
               variant={advice.riskLevel === "high" ? "danger" : "default"}
             />
           </div>
+
+          {advice.pipCounts && (
+            <div className={styles.metricRow}>
+              <Metric label="Pips ○" value={String(advice.pipCounts.white)} />
+              <Metric label="Pips ●" value={String(advice.pipCounts.black)} />
+              <Metric
+                label="Écart"
+                value={fmtPipLead(advice.pipCounts.white, advice.pipCounts.black)}
+              />
+            </div>
+          )}
 
           <div className={styles.block}>
             <h3>Meilleur coup</h3>
@@ -94,6 +105,16 @@ export function StrategyPanel({ advice, dice, detecting, status, confirmed, vari
       ) : null}
     </section>
   );
+}
+
+function fmtEquity(e: number): string {
+  return `${e >= 0 ? "+" : ""}${e.toFixed(3)}`;
+}
+
+function fmtPipLead(white: number, black: number): string {
+  const d = black - white;
+  if (d === 0) return "égalité";
+  return d > 0 ? `○ +${d}` : `● +${-d}`;
 }
 
 function Metric({

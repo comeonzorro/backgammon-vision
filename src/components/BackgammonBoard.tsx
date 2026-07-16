@@ -38,8 +38,8 @@ export function BackgammonBoard({
         )}
       </div>
       <div className={styles.offArea}>
-        <span className={styles.offLabel}>Dé {offWhite}</span>
-        <span className={styles.offLabel}>Dé {offBlack}</span>
+        <span className={styles.offLabel}>Sorties ○ {offWhite}</span>
+        <span className={styles.offLabel}>Sorties ● {offBlack}</span>
       </div>
       <div className={styles.inner}>
         <div className={styles.half}>

@@ -22,7 +22,12 @@ import { useVideoSource } from "../hooks/useVideoSource";
 import { autoDetectBoardCorners } from "../lib/autoCalibrateBoard";
 import { detectionToSnapshot } from "../lib/boardVision";
 import { createRoomId } from "../lib/videoInputs";
-import { createInitialBoard, analyzePosition, snapshotFromDice } from "../lib/strategyEngine";
+import {
+  createInitialBoard,
+  analyzePosition,
+  snapshotFromDice,
+  inferMoveFromSnapshots,
+} from "../lib/strategyEngine";
 import type { AppMode, GameSnapshot, HistoryEntry, StrategyAdvice } from "../types";
 import type { LiveBroadcastState, SpectatorLayout } from "../types/live";
 import { DEFAULT_SPECTATOR_LAYOUT } from "../types/live";
@@ -59,6 +64,15 @@ export function TableApp() {
   }));
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [advice, setAdvice] = useState<StrategyAdvice | null>(null);
+
+  // Jet en attente de transcription : dès que la position détectée après le
+  // jet correspond à un coup légal, le coup joué est transcrit (style
+  // Digigammon/BG Blitz) et la position est recalée sur la position légale.
+  const pendingRollRef = useRef<{
+    dice: number[];
+    mover: "white" | "black";
+    baseline: GameSnapshot;
+  } | null>(null);
 
   const video = useVideoSource();
   const cameras = useCameraDevices(true);
@@ -153,6 +167,46 @@ export function TableApp() {
   useEffect(() => {
     if (!boardCalib.isPlaying || !boardDetection.stable) return;
     const det = boardDetection.stable;
+
+    // Transcription du coup joué : la position détectée est comparée aux
+    // positions légales atteignables depuis le jet confirmé.
+    const pending = pendingRollRef.current;
+    if (pending) {
+      const inferred = inferMoveFromSnapshots(
+        pending.baseline,
+        det.points.map((p) => ({ index: p.index, white: p.white, black: p.black })),
+        det.barWhite,
+        det.barBlack,
+        pending.mover,
+        pending.dice,
+      );
+      if (inferred && inferred.distance <= 2) {
+        pendingRollRef.current = null;
+        const label = pending.mover === "white" ? "Blanc" : "Noir";
+        setHistory((h) => [
+          {
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+            label: `${label} joue`,
+            dice: pending.dice,
+            move: inferred.exact ? inferred.notation : `${inferred.notation} (recalé)`,
+          },
+          ...h.slice(0, 49),
+        ]);
+        // Position recalée sur le coup légal : corrige le bruit caméra.
+        setSnapshot((prev) => ({
+          ...prev,
+          points: inferred.board.points,
+          barWhite: inferred.board.barWhite,
+          barBlack: inferred.board.barBlack,
+          offWhite: inferred.board.offWhite,
+          offBlack: inferred.board.offBlack,
+          timestamp: det.timestamp,
+        }));
+        return;
+      }
+    }
+
     setSnapshot((prev) => ({
       ...prev,
       points: det.points.map((p) => ({
@@ -162,6 +216,8 @@ export function TableApp() {
       })),
       barWhite: det.barWhite,
       barBlack: det.barBlack,
+      offWhite: det.offWhite,
+      offBlack: det.offBlack,
       timestamp: det.timestamp,
     }));
   }, [boardDetection.stable?.timestamp, boardCalib.isPlaying]);
@@ -189,18 +245,23 @@ export function TableApp() {
 
   useEffect(() => {
     if (!detection.confirmedRoll) return;
-    const { dice, frame } = detection.confirmedRoll;
+    const { dice } = detection.confirmedRoll;
     if (dice.length < 2) return;
-    const source = frame.source;
     setSnapshot((prev) => {
       const next = snapshotFromDice(dice, prev);
       const strat = analyzePosition(next, dice);
       setAdvice(strat);
+      const label = next.activePlayer === "white" ? "Blanc" : "Noir";
+      pendingRollRef.current = {
+        dice,
+        mover: next.activePlayer,
+        baseline: prev,
+      };
       setHistory((h) => [
         {
           id: crypto.randomUUID(),
           timestamp: Date.now(),
-          label: `Lecture caméra (${source})`,
+          label: `Jet ${label} (caméra)`,
           dice,
           move: strat.bestMove,
         },

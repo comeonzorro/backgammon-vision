@@ -4,10 +4,12 @@ import { boardBoundingRect } from "../lib/autoCalibrateBoard";
 import type { BoardCalibration } from "../types/board";
 import type { ConfirmedRoll, DetectionFrame, DetectionStatus } from "../types";
 
-const DETECTION_HZ = 2.5;
+const DETECTION_HZ = 3;
 const INTERVAL_MS = Math.round(1000 / DETECTION_HZ);
-const STABLE_FRAMES = 2;
-const MIN_CONFIDENCE = 0.42;
+// 3 lectures identiques consécutives avant validation : évite les faux
+// positifs d'une frame isolée (ombre, main, reflet).
+const STABLE_FRAMES = 3;
+const MIN_CONFIDENCE = 0.55;
 const MOTION_THRESHOLD = 24;
 
 function rollKey(dice: number[]): string {
