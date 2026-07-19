@@ -56,3 +56,35 @@ export const POINT_GRID: (number | "bar")[][] = [
   [13, 14, 15, 16, 17, 18, "bar", 19, 20, 21, 22, 23, 24],
   [12, 11, 10, 9, 8, 7, "bar", 6, 5, 4, 3, 2, 1],
 ];
+
+/**
+ * Orientation physique du plateau dans l'image :
+ *  - transposed : plateau filmé en portrait (charnière horizontale, les 13
+ *    colonnes logiques courent verticalement) ;
+ *  - flipMain / flipCross : sens de numérotation (résolu automatiquement en
+ *    comparant la détection à la position de départ standard).
+ */
+export interface BoardMapping {
+  transposed: boolean;
+  flipMain: boolean;
+  flipCross: boolean;
+}
+
+const MAPPING_KEY = "bgv-board-mapping";
+
+export function loadBoardMapping(): BoardMapping | null {
+  try {
+    const raw = localStorage.getItem(MAPPING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BoardMapping;
+    if (typeof parsed.transposed === "boolean") return parsed;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function saveBoardMapping(mapping: BoardMapping | null) {
+  if (!mapping) localStorage.removeItem(MAPPING_KEY);
+  else localStorage.setItem(MAPPING_KEY, JSON.stringify(mapping));
+}
