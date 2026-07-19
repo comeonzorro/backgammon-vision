@@ -20,7 +20,7 @@ import { useLiveRoom } from "../hooks/useLiveRoom";
 import { useVideoFramePublisher } from "../hooks/useVideoFramePublisher";
 import { useVideoSource } from "../hooks/useVideoSource";
 import { autoDetectBoardCorners } from "../lib/autoCalibrateBoard";
-import { detectionToSnapshot } from "../lib/boardVision";
+import { detectionToSnapshot, resolveBoardMapping } from "../lib/boardVision";
 import { createRoomId } from "../lib/videoInputs";
 import {
   createInitialBoard,
@@ -29,6 +29,8 @@ import {
   inferMoveFromSnapshots,
 } from "../lib/strategyEngine";
 import type { AppMode, GameSnapshot, HistoryEntry, StrategyAdvice } from "../types";
+import type { BoardMapping } from "../types/board";
+import { loadBoardMapping, saveBoardMapping } from "../types/board";
 import type { LiveBroadcastState, SpectatorLayout } from "../types/live";
 import { DEFAULT_SPECTATOR_LAYOUT } from "../types/live";
 import styles from "../App.module.css";
@@ -74,6 +76,10 @@ export function TableApp() {
     baseline: GameSnapshot;
   } | null>(null);
 
+  // Orientation / numérotation du plateau (portrait ou paysage), résolue
+  // automatiquement à partir de la position de départ standard.
+  const [boardMapping, setBoardMapping] = useState<BoardMapping | null>(loadBoardMapping);
+
   const video = useVideoSource();
   const cameras = useCameraDevices(true);
   const boardCalib = useBoardCalibration();
@@ -89,6 +95,7 @@ export function TableApp() {
     boardCalib.calibration,
     streamActiveForDetection,
     boardCalib.isPlaying,
+    boardMapping,
   );
 
   const detection = useDiceDetection(
@@ -150,6 +157,29 @@ export function TableApp() {
       if (compact) setMobileTab("game");
     }
   }, [captureFrame, boardCalib, compact, setMobileTab]);
+
+  // Résout l'orientation/numérotation en comparant la détection à la
+  // position de départ standard (à faire pions en position initiale).
+  const resolveMapping = useCallback(() => {
+    const imageData = captureFrame();
+    if (!imageData) return;
+    const resolved = resolveBoardMapping(imageData, boardCalib.calibration);
+    if (resolved && resolved.distance <= 14) {
+      setBoardMapping(resolved.mapping);
+      saveBoardMapping(resolved.mapping);
+    }
+  }, [captureFrame, boardCalib.calibration]);
+
+  const handleConfirmPreview = useCallback(() => {
+    resolveMapping();
+    boardCalib.confirmPreview();
+  }, [resolveMapping, boardCalib]);
+
+  const handleResetCalibration = useCallback(() => {
+    setBoardMapping(null);
+    saveBoardMapping(null);
+    boardCalib.resetCalibration();
+  }, [boardCalib]);
 
   useEffect(() => {
     if (
@@ -234,6 +264,8 @@ export function TableApp() {
   };
 
   const handleStartGame = () => {
+    // Re-résout le mapping au démarrage (pions encore en position initiale).
+    resolveMapping();
     if (boardDetection.preview && boardDetection.preview.confidence >= 0.35) {
       const board = detectionToSnapshot(boardDetection.preview);
       setSnapshot((prev) => ({ ...prev, ...board }));
@@ -475,10 +507,10 @@ export function TableApp() {
                 confidence={boardDetection.confidence}
                 detecting={boardDetection.detecting}
                 onAutoDetect={handleAutoDetectBoard}
-                onConfirmPreview={boardCalib.confirmPreview}
+                onConfirmPreview={handleConfirmPreview}
                 onStartGame={handleStartGame}
                 onBackToAdjust={boardCalib.backToAdjust}
-                onReset={boardCalib.resetCalibration}
+                onReset={handleResetCalibration}
                 onApplyStandard={applyStandardBoard}
               />
             </div>

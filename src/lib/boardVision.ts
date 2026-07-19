@@ -1,30 +1,37 @@
-import type { BoardCalibration, BoardDetectionResult } from "../types/board";
+import type { BoardCalibration, BoardDetectionResult, BoardMapping } from "../types/board";
 import { POINT_GRID } from "../types/board";
 import type { NormPoint } from "../types/board";
+import { standardBoard } from "./bg/engine";
 
 /**
- * Lecture des pions par vision :
- *  1. estimation de la couleur de référence du tapis sur la bande médiane,
- *  2. pour chaque flèche : échantillonnage multi-colonnes le long de l'axe
- *     de la pile (base → pointe), classification blanc / noir / tapis par
- *     écart de luminance ET de chrominance à la référence,
- *  3. comptage par LONGUEUR de pile (≈ 5 pions par flèche) au lieu d'un
- *     comptage de pics sur une seule ligne (fragile aux ombres),
- *  4. bear-off déduit : 15 − pions vus (par couleur).
+ * Lecture des pions par vision, quelle que soit l'orientation du plateau :
+ *
+ *  - GRILLE ORIENTABLE : le plateau peut être filmé en paysage (13 colonnes
+ *    × 2 rangées) ou en portrait (charnière horizontale, colonnes
+ *    verticales). L'orientation est déduite du quad de calibration et la
+ *    numérotation (sens des points) est résolue automatiquement en
+ *    comparant la détection à la position de départ standard.
+ *
+ *  - FOND DES FLÈCHES MODÉLISÉ : les triangles alternent deux couleurs
+ *    (souvent noir/blanc — comme les pions !). Pour chaque échantillon on
+ *    calcule le fond ATTENDU (triangle ou tapis selon la position
+ *    transversale et la largeur du triangle qui décroît vers la pointe) et
+ *    on ne déclare un pion que si la couleur observée s'en écarte. Un pion
+ *    déborde du triangle en largeur, ce qui le distingue du fond même à
+ *    couleur identique.
+ *
+ *  - COMPTAGE PAR LONGUEUR DE PILE (≈ 5 pions par flèche) et bear-off
+ *    déduit (15 − pions vus par couleur).
  */
 
 const COLS = 13;
-const ROWS = 2;
+const BAR_COL = 6;
 
-/** Pas d'échantillonnage le long d'une flèche. */
 const AXIS_SAMPLES = 26;
-/** Positions transversales échantillonnées (fraction de la largeur de case). */
-const CROSS_POSITIONS = [0.35, 0.5, 0.65];
-/** Un pion occupe ≈ 1/5,4 de la longueur de la flèche. */
+const CROSS_POSITIONS = [0.14, 0.32, 0.5, 0.68, 0.86];
 const CHECKERS_PER_POINT = 5.4;
 
-interface FeltReference {
-  lum: number;
+interface RGB {
   r: number;
   g: number;
   b: number;
@@ -36,12 +43,43 @@ interface CellReading {
   confidence: number;
 }
 
+/**
+ * Orientation par défaut : transposée si le quad (en pixels) est plus haut
+ * que large. Les coins sont normalisés 0–1 : il faut donc le ratio d'aspect
+ * de l'image pour ne pas confondre un cadre portrait rempli avec un paysage.
+ */
+export function inferDefaultMapping(
+  calibration: BoardCalibration,
+  imageWidth = 1,
+  imageHeight = 1,
+): BoardMapping {
+  const [tl, tr, br, bl] = calibration.corners;
+  const w =
+    (pixelDist(tl, tr, imageWidth, imageHeight) +
+      pixelDist(bl, br, imageWidth, imageHeight)) /
+    2;
+  const h =
+    (pixelDist(tl, bl, imageWidth, imageHeight) +
+      pixelDist(tr, br, imageWidth, imageHeight)) /
+    2;
+  return { transposed: h > w * 1.05, flipMain: false, flipCross: false };
+}
+
+function pixelDist(a: NormPoint, b: NormPoint, w: number, h: number): number {
+  return Math.hypot((a.x - b.x) * w, (a.y - b.y) * h);
+}
+
 export function detectBoardFromFrame(
   imageData: ImageData,
   calibration: BoardCalibration,
+  mapping?: BoardMapping | null,
 ): BoardDetectionResult {
   const { width, height, data } = imageData;
-  const felt = estimateFelt(data, width, height, calibration.corners);
+  const m = mapping ?? inferDefaultMapping(calibration, width, height);
+  const corners = calibration.corners;
+
+  const cork = estimateCork(data, width, height, corners);
+  const triColors = estimateTriangleColors(data, width, height, corners, m, cork);
 
   const points: BoardDetectionResult["points"] = [];
   const pointConfidence: Record<number, number> = {};
@@ -50,13 +88,12 @@ export function detectBoardFromFrame(
   let confSum = 0;
   let confN = 0;
 
-  for (let row = 0; row < ROWS; row++) {
+  for (let row = 0; row < 2; row++) {
     for (let col = 0; col < COLS; col++) {
       const id = POINT_GRID[row][col];
-      const quad = getCellQuad(calibration.corners, col, row, COLS, ROWS);
-      const read = readCell(data, width, height, quad, row, felt, id === "bar");
 
       if (id === "bar") {
+        const read = readBarCell(data, width, height, corners, m, row, col, cork);
         barWhite += read.white;
         barBlack += read.black;
         confSum += read.confidence;
@@ -64,11 +101,20 @@ export function detectBoardFromFrame(
         continue;
       }
 
-      points.push({
-        index: id,
-        white: read.white,
-        black: read.black,
-      });
+      const parity = cellParity(m, row, col);
+      const read = readCell(
+        data,
+        width,
+        height,
+        corners,
+        m,
+        row,
+        col,
+        cork,
+        triColors[parity],
+      );
+
+      points.push({ index: id, white: read.white, black: read.black });
       pointConfidence[id] = read.confidence;
       confSum += read.confidence;
       confN++;
@@ -89,8 +135,6 @@ export function detectBoardFromFrame(
     points,
     barWhite,
     barBlack,
-    // Pions sortis (bear-off) : déduits du total, seulement si la lecture
-    // est assez fiable pour ne pas inventer des sorties sur du bruit.
     offWhite: confidence >= 0.45 ? Math.max(0, 15 - seenWhite) : 0,
     offBlack: confidence >= 0.45 ? Math.max(0, 15 - seenBlack) : 0,
     confidence,
@@ -99,165 +143,249 @@ export function detectBoardFromFrame(
   };
 }
 
-/** Référence tapis : médiane des échantillons de la bande médiane du plateau. */
-function estimateFelt(
+/**
+ * Résolution automatique de l'orientation / numérotation : essaie les
+ * 4 sens possibles et garde celui dont la détection est la plus proche de
+ * la position de départ standard. À utiliser quand les pions sont en
+ * position initiale (validation de calibration / début de partie).
+ */
+export function resolveBoardMapping(
+  imageData: ImageData,
+  calibration: BoardCalibration,
+): { mapping: BoardMapping; distance: number } | null {
+  // Essaie les deux orientations (portrait/paysage) × 4 sens de numérotation.
+  const reference = standardBoard();
+  let best: { mapping: BoardMapping; distance: number } | null = null;
+
+  for (const transposed of [false, true]) {
+    for (const flipMain of [false, true]) {
+      for (const flipCross of [false, true]) {
+        const mapping: BoardMapping = { transposed, flipMain, flipCross };
+        const det = detectBoardFromFrame(imageData, calibration, mapping);
+
+        let distance = Math.abs(det.barWhite) + Math.abs(det.barBlack);
+        for (const p of det.points) {
+          const ref = reference.points[p.index - 1];
+          distance += Math.abs(p.white - ref.white) + Math.abs(p.black - ref.black);
+        }
+
+        if (!best || distance < best.distance) {
+          best = { mapping, distance };
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+/** Parité physique d'une cellule (les triangles alternent 2 couleurs). */
+function cellParity(m: BoardMapping, row: number, col: number): number {
+  const c = m.flipMain ? COLS - 1 - col : col;
+  const r = m.flipCross ? 1 - row : row;
+  return (r + c) % 2;
+}
+
+/**
+ * Point d'échantillonnage d'une cellule :
+ *  t ∈ [0,1] le long de la pile (0 = base au bord extérieur, 1 = pointe),
+ *  s ∈ [0,1] en travers de la flèche.
+ */
+function samplePoint(
+  corners: [NormPoint, NormPoint, NormPoint, NormPoint],
+  m: BoardMapping,
+  row: number,
+  col: number,
+  t: number,
+  s: number,
+): NormPoint {
+  const c = m.flipMain ? COLS - 1 - col : col;
+  const r = m.flipCross ? 1 - row : row;
+
+  const main = (c + s) / COLS;
+  const axis = r === 0 ? t / 2 : 1 - t / 2;
+
+  const u = m.transposed ? axis : main;
+  const v = m.transposed ? main : axis;
+  return bilinear(corners, u, v);
+}
+
+function readPixel(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  p: NormPoint,
+): RGB | null {
+  const x = Math.round(p.x * width);
+  const y = Math.round(p.y * height);
+  if (x < 0 || y < 0 || x >= width || y >= height) return null;
+  const i = (y * width + x) * 4;
+  return { r: data[i], g: data[i + 1], b: data[i + 2] };
+}
+
+/** Tapis (cork/feutre) : médiane robuste sur l'intérieur du plateau. */
+function estimateCork(
   data: Uint8ClampedArray,
   width: number,
   height: number,
   corners: [NormPoint, NormPoint, NormPoint, NormPoint],
-): FeltReference {
-  const samples: { lum: number; r: number; g: number; b: number }[] = [];
-
-  for (const v of [0.45, 0.5, 0.55]) {
-    for (let u = 0.04; u <= 0.96; u += 0.02) {
-      const p = bilinear(corners, u, v);
-      const x = Math.round(p.x * width);
-      const y = Math.round(p.y * height);
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const i = (y * width + x) * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      samples.push({ lum: luminance(r, g, b), r, g, b });
+): RGB & { lum: number } {
+  const samples: (RGB & { lum: number })[] = [];
+  for (let iu = 0; iu < 30; iu++) {
+    for (let iv = 0; iv < 30; iv++) {
+      const u = 0.05 + (iu / 29) * 0.9;
+      const v = 0.05 + (iv / 29) * 0.9;
+      const px = readPixel(data, width, height, bilinear(corners, u, v));
+      if (!px) continue;
+      samples.push({ ...px, lum: luminance(px.r, px.g, px.b) });
     }
   }
+  if (samples.length === 0) return { r: 150, g: 120, b: 90, lum: 125 };
 
-  if (samples.length === 0) return { lum: 100, r: 90, g: 110, b: 80 };
-
-  // Médiane robuste : ignorer le quart le plus clair et le plus sombre
-  // (pions posés sur la bande médiane, reflets).
   samples.sort((a, b) => a.lum - b.lum);
-  const q = Math.floor(samples.length / 4);
-  const mid = samples.slice(q, samples.length - q);
-  const n = mid.length || 1;
-  const acc = mid.reduce(
-    (s, x) => ({ lum: s.lum + x.lum, r: s.r + x.r, g: s.g + x.g, b: s.b + x.b }),
-    { lum: 0, r: 0, g: 0, b: 0 },
+  const med = samples[Math.floor(samples.length / 2)].lum;
+  const near = samples.filter((s) => Math.abs(s.lum - med) < 24);
+  const n = near.length || 1;
+  const acc = near.reduce(
+    (s, x) => ({ r: s.r + x.r, g: s.g + x.g, b: s.b + x.b, lum: s.lum + x.lum }),
+    { r: 0, g: 0, b: 0, lum: 0 },
   );
-
-  return { lum: acc.lum / n, r: acc.r / n, g: acc.g / n, b: acc.b / n };
-}
-
-type SampleClass = "white" | "black" | "felt";
-
-interface ClassifiedSample {
-  cls: SampleClass;
-  margin: number;
-}
-
-function classifySample(
-  r: number,
-  g: number,
-  b: number,
-  felt: FeltReference,
-): ClassifiedSample {
-  const lum = luminance(r, g, b);
-  const dLum = lum - felt.lum;
-  const chroma = Math.abs(r - felt.r) + Math.abs(g - felt.g) + Math.abs(b - felt.b);
-
-  const whiteTh = Math.max(30, felt.lum * 0.28);
-  const blackTh = Math.max(24, felt.lum * 0.34);
-
-  if (dLum > whiteTh && chroma > whiteTh * 0.8) {
-    return { cls: "white", margin: Math.min(1, (dLum - whiteTh) / whiteTh + 0.5) };
-  }
-  if (dLum < -blackTh && chroma > blackTh * 0.6) {
-    return { cls: "black", margin: Math.min(1, (-dLum - blackTh) / blackTh + 0.5) };
-  }
-  return { cls: "felt", margin: Math.min(1, 1 - Math.abs(dLum) / Math.max(whiteTh, blackTh)) };
+  return { r: acc.r / n, g: acc.g / n, b: acc.b / n, lum: acc.lum / n };
 }
 
 /**
- * Lit une case (flèche ou bar) : échantillonne le long de l'axe de la pile
- * depuis la base et convertit la longueur de pile en nombre de pions.
+ * Couleurs des deux familles de triangles : médiane des pointes (zone
+ * t ≈ 0.9, rarement couverte par les piles) par parité.
  */
+function estimateTriangleColors(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  corners: [NormPoint, NormPoint, NormPoint, NormPoint],
+  m: BoardMapping,
+  cork: RGB & { lum: number },
+): [RGB, RGB] {
+  const groups: RGB[][] = [[], []];
+
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (col === BAR_COL) continue;
+      const acc = { r: 0, g: 0, b: 0 };
+      let n = 0;
+      for (const t of [0.86, 0.92]) {
+        const px = readPixel(
+          data,
+          width,
+          height,
+          samplePoint(corners, m, row, col, t, 0.5),
+        );
+        if (!px) continue;
+        acc.r += px.r;
+        acc.g += px.g;
+        acc.b += px.b;
+        n++;
+      }
+      if (n === 0) continue;
+      groups[cellParity(m, row, col)].push({ r: acc.r / n, g: acc.g / n, b: acc.b / n });
+    }
+  }
+
+  const medianOf = (arr: RGB[]): RGB => {
+    if (arr.length === 0) return cork;
+    const byLum = [...arr].sort(
+      (a, b) => luminance(a.r, a.g, a.b) - luminance(b.r, b.g, b.b),
+    );
+    return byLum[Math.floor(byLum.length / 2)];
+  };
+
+  return [medianOf(groups[0]), medianOf(groups[1])];
+}
+
+/** Demi-largeur du triangle (fraction de la cellule) à la position t. */
+function triangleHalfWidth(t: number): number {
+  return Math.max(0.05, 0.46 * (1 - t));
+}
+
+function colorDist(a: RGB, b: RGB): number {
+  return Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+}
+
 function readCell(
   data: Uint8ClampedArray,
   width: number,
   height: number,
-  quad: NormPoint[],
+  corners: [NormPoint, NormPoint, NormPoint, NormPoint],
+  m: BoardMapping,
   row: number,
-  felt: FeltReference,
-  isBar: boolean,
+  col: number,
+  cork: RGB & { lum: number },
+  triangleColor: RGB,
 ): CellReading {
-  // t = 0 à la BASE de la pile (bord extérieur), t = 1 vers le milieu.
-  // row 0 : base en haut du quad (v' = 0) ; row 1 : base en bas (v' = 1).
-  const classes: ClassifiedSample[] = [];
+  const coverTh = Math.max(40, cork.lum * 0.25) * 1.9;
 
-  for (let s = 0; s < AXIS_SAMPLES; s++) {
-    const t = 0.03 + (s / (AXIS_SAMPLES - 1)) * 0.94;
-    const v = row === 0 ? t : 1 - t;
-
-    let rSum = 0;
-    let gSum = 0;
-    let bSum = 0;
-    let n = 0;
-    for (const u of CROSS_POSITIONS) {
-      const p = bilinearQuad(quad, u, v);
-      const x = Math.round(p.x * width);
-      const y = Math.round(p.y * height);
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const i = (y * width + x) * 4;
-      rSum += data[i];
-      gSum += data[i + 1];
-      bSum += data[i + 2];
-      n++;
-    }
-    if (n === 0) {
-      classes.push({ cls: "felt", margin: 0 });
-      continue;
-    }
-    classes.push(classifySample(rSum / n, gSum / n, bSum / n, felt));
-  }
-
-  const stepsPerChecker = AXIS_SAMPLES / CHECKERS_PER_POINT;
-
-  if (isBar) {
-    // Sur le bar les deux couleurs coexistent (chacun son côté) :
-    // comptage par longueur cumulée de chaque couleur.
-    const whiteSteps = classes.filter((c) => c.cls === "white").length;
-    const blackSteps = classes.filter((c) => c.cls === "black").length;
-    const white = Math.round(whiteSteps / stepsPerChecker);
-    const black = Math.round(blackSteps / stepsPerChecker);
-    const conf = white + black > 0 ? 0.55 : 0.35;
-    return { white, black, confidence: conf };
-  }
-
-  // Pile depuis la base : run de la couleur dominante, tolère 1 trou
-  // (reflet / liseré entre pions).
-  let runEnd = 0;
-  let gap = 0;
+  let coveredSteps = 0;
   let whiteVotes = 0;
   let blackVotes = 0;
   let marginSum = 0;
+  let uncoveredStreak = 0;
+  let seenCovered = false;
 
-  for (let s = 0; s < classes.length; s++) {
-    const c = classes[s];
-    if (c.cls === "felt") {
-      gap++;
-      if (gap >= 2) break;
-    } else {
-      gap = 0;
-      runEnd = s + 1;
-      marginSum += c.margin;
-      if (c.cls === "white") whiteVotes++;
-      else blackVotes++;
+  for (let k = 0; k < AXIS_SAMPLES; k++) {
+    const t = 0.03 + (k / (AXIS_SAMPLES - 1)) * 0.9;
+    const halfW = triangleHalfWidth(t);
+
+    let covered = 0;
+    let stepWhite = 0;
+    let stepBlack = 0;
+    let stepMargin = 0;
+
+    for (const s of CROSS_POSITIONS) {
+      const px = readPixel(
+        data,
+        width,
+        height,
+        samplePoint(corners, m, row, col, t, s),
+      );
+      if (!px) continue;
+
+      const onTriangle = Math.abs(s - 0.5) <= halfW;
+      const expected = onTriangle ? triangleColor : cork;
+      const diff = colorDist(px, expected);
+      if (diff <= coverTh) continue;
+
+      covered++;
+      stepMargin += Math.min(1, diff / (coverTh * 2));
+      const lum = luminance(px.r, px.g, px.b);
+      if (lum >= cork.lum) stepWhite++;
+      else stepBlack++;
+    }
+
+    const isCovered = covered >= 1;
+    if (isCovered) {
+      seenCovered = true;
+      uncoveredStreak = 0;
+      coveredSteps++;
+      whiteVotes += stepWhite;
+      blackVotes += stepBlack;
+      marginSum += stepMargin / Math.max(1, covered);
+    } else if (seenCovered) {
+      uncoveredStreak++;
+      if (uncoveredStreak >= 3) break;
     }
   }
 
-  const checkerSteps = whiteVotes + blackVotes;
-  if (checkerSteps === 0) {
+  if (coveredSteps === 0) {
     return { white: 0, black: 0, confidence: 0.6 };
   }
 
-  const count = Math.max(
-    1,
-    Math.min(7, Math.round((runEnd - Math.min(gap, 1)) / stepsPerChecker)),
-  );
+  const stepsPerChecker = AXIS_SAMPLES / CHECKERS_PER_POINT;
+  const count = Math.max(1, Math.min(7, Math.round(coveredSteps / stepsPerChecker)));
+
+  const totalVotes = whiteVotes + blackVotes;
   const isWhite = whiteVotes >= blackVotes;
-  const purity = Math.max(whiteVotes, blackVotes) / checkerSteps;
-  const avgMargin = marginSum / checkerSteps;
-  const confidence = Math.min(0.95, 0.3 + purity * 0.35 + avgMargin * 0.3);
+  const purity = totalVotes > 0 ? Math.max(whiteVotes, blackVotes) / totalVotes : 0;
+  const avgMargin = marginSum / coveredSteps;
+  const confidence = Math.min(0.95, 0.25 + purity * 0.4 + avgMargin * 0.3);
 
   return {
     white: isWhite ? count : 0,
@@ -266,23 +394,55 @@ function readCell(
   };
 }
 
-function getCellQuad(
+/**
+ * Bar (charnière) : fond différent du tapis → référence locale = médiane
+ * des échantillons de la cellule elle-même. Les deux couleurs peuvent
+ * coexister.
+ */
+function readBarCell(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
   corners: [NormPoint, NormPoint, NormPoint, NormPoint],
-  col: number,
+  m: BoardMapping,
   row: number,
-  cols: number,
-  rows: number,
-): NormPoint[] {
-  const u0 = col / cols;
-  const u1 = (col + 1) / cols;
-  const v0 = row / rows;
-  const v1 = (row + 1) / rows;
-  return [
-    bilinear(corners, u0, v0),
-    bilinear(corners, u1, v0),
-    bilinear(corners, u1, v1),
-    bilinear(corners, u0, v1),
-  ];
+  col: number,
+  cork: RGB & { lum: number },
+): CellReading {
+  const all: { px: RGB; lum: number }[] = [];
+
+  for (let k = 0; k < AXIS_SAMPLES; k++) {
+    const t = 0.05 + (k / (AXIS_SAMPLES - 1)) * 0.9;
+    for (const s of [0.3, 0.5, 0.7]) {
+      const px = readPixel(
+        data,
+        width,
+        height,
+        samplePoint(corners, m, row, col, t, s),
+      );
+      if (!px) continue;
+      all.push({ px, lum: luminance(px.r, px.g, px.b) });
+    }
+  }
+  if (all.length < 8) return { white: 0, black: 0, confidence: 0.3 };
+
+  const sorted = [...all].sort((a, b) => a.lum - b.lum);
+  const bg = sorted[Math.floor(sorted.length / 2)].px;
+  const coverTh = Math.max(40, cork.lum * 0.25) * 1.9;
+
+  let whiteSamples = 0;
+  let blackSamples = 0;
+  for (const { px, lum } of all) {
+    if (colorDist(px, bg) <= coverTh) continue;
+    if (lum >= cork.lum + 20) whiteSamples++;
+    else if (lum <= cork.lum - 20) blackSamples++;
+  }
+
+  const samplesPerChecker = (all.length / CHECKERS_PER_POINT) * 0.8;
+  const white = Math.min(6, Math.round(whiteSamples / samplesPerChecker));
+  const black = Math.min(6, Math.round(blackSamples / samplesPerChecker));
+
+  return { white, black, confidence: 0.5 };
 }
 
 function bilinear(
@@ -291,16 +451,6 @@ function bilinear(
   v: number,
 ): NormPoint {
   const [tl, tr, br, bl] = corners;
-  const tx = lerp(tl.x, tr.x, u);
-  const ty = lerp(tl.y, tr.y, u);
-  const bx = lerp(bl.x, br.x, u);
-  const by = lerp(bl.y, br.y, u);
-  return { x: lerp(tx, bx, v), y: lerp(ty, by, v) };
-}
-
-/** Interpolation bilinéaire à l'intérieur d'un quad quelconque (4 coins). */
-function bilinearQuad(quad: NormPoint[], u: number, v: number): NormPoint {
-  const [tl, tr, br, bl] = quad;
   const tx = lerp(tl.x, tr.x, u);
   const ty = lerp(tl.y, tr.y, u);
   const bx = lerp(bl.x, br.x, u);

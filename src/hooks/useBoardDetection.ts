@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { boardStatesMatch, detectBoardFromFrame } from "../lib/boardVision";
-import type { BoardCalibration, BoardDetectionResult } from "../types/board";
+import type { BoardCalibration, BoardDetectionResult, BoardMapping } from "../types/board";
 
 const PREVIEW_HZ = 1.2;
 const LIVE_HZ = 1;
@@ -11,6 +11,7 @@ export function useBoardDetection(
   calibration: BoardCalibration,
   enabled: boolean,
   liveMode: boolean,
+  mapping: BoardMapping | null = null,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stableBufferRef = useRef<BoardDetectionResult[]>([]);
@@ -37,8 +38,8 @@ export function useBoardDetection(
 
     ctx.drawImage(video, 0, 0, w, h);
     const imageData = ctx.getImageData(0, 0, w, h);
-    return detectBoardFromFrame(imageData, calibration);
-  }, [videoRef, enabled, calibration]);
+    return detectBoardFromFrame(imageData, calibration, mapping);
+  }, [videoRef, enabled, calibration, mapping]);
 
   const runOnce = useCallback(async () => {
     setDetecting(true);

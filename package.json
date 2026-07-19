@@ -9,6 +9,7 @@
     "live:server": "cd server && npm install && npm start",
     "build": "tsc --noEmit && vite build",
     "check:engine": "tsx scripts/checkEngine.ts",
+    "check:vision": "tsx scripts/checkVision.ts",
     "build:subdir": "BASE_PATH=/backgammon-vision/ npm run build",
     "preview": "vite preview",
     "preview:subdir": "BASE_PATH=/backgammon-vision/ npm run build && vite preview"
