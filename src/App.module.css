@@ -121,15 +121,15 @@
   padding: 0.2rem;
   border-radius: 8px;
   border: 1px solid var(--border);
-  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .modeToggle button {
   flex: 1;
   background: transparent;
   border: none;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.72rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
 }
 
 .activeMode {
@@ -138,14 +138,36 @@
   font-weight: 600;
 }
 
+.streamerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.4rem 0.75rem;
+  padding-bottom: calc(0.4rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: rgba(201, 162, 39, 0.12);
+  flex-shrink: 0;
+  z-index: 20;
+}
+
 .streamerHint {
   margin: 0;
-  padding: 0.35rem 0.65rem;
   font-size: 0.72rem;
   color: var(--muted);
-  text-align: center;
-  border-top: 1px solid var(--border);
-  background: rgba(201, 162, 39, 0.08);
+  flex: 1;
+  min-width: 0;
+}
+
+.exitStreamer {
+  flex-shrink: 0;
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
 }
 
 @media (max-width: 960px) {

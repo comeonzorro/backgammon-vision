@@ -467,6 +467,26 @@ export function TableApp() {
             className={`${styles.sidebar} ${compact ? styles.sidebarCompact : ""} ${compact && mobileTab !== "game" ? styles.sidebarHidden : ""}`}
           >
             <div className={styles.gameEssentials}>
+              <div className={styles.modeToggle}>
+                <button
+                  type="button"
+                  className={mode === "player" ? styles.activeMode : ""}
+                  onClick={() => setMode("player")}
+                >
+                  Table
+                </button>
+                <button
+                  type="button"
+                  className={mode === "streamer" ? styles.activeMode : ""}
+                  onClick={() => {
+                    setMode("streamer");
+                    if (compact) setMobileTab("game");
+                  }}
+                >
+                  OBS overlay
+                </button>
+              </div>
+
               <GameSessionPanel
                 playerWhite={session.playerWhite}
                 playerBlack={session.playerBlack}
@@ -562,23 +582,6 @@ export function TableApp() {
                 onToggleLive={() => detection.setLiveMode(!detection.liveMode)}
                 onToggleOnnx={detection.setUseOnnx}
               />
-
-              <div className={styles.modeToggle}>
-                <button
-                  type="button"
-                  className={mode === "player" ? styles.activeMode : ""}
-                  onClick={() => setMode("player")}
-                >
-                  Table
-                </button>
-                <button
-                  type="button"
-                  className={mode === "streamer" ? styles.activeMode : ""}
-                  onClick={() => setMode("streamer")}
-                >
-                  OBS overlay
-                </button>
-              </div>
             </div>
           </aside>
         </main>
@@ -587,9 +590,18 @@ export function TableApp() {
       </div>
 
       {mode === "streamer" && (
-        <p className={styles.streamerHint}>
-          Mode overlay OBS : Browser Source vers cette URL · flux principal géré par OBS.
-        </p>
+        <div className={styles.streamerBar}>
+          <p className={styles.streamerHint}>
+            Mode overlay OBS — Browser Source vers cette URL
+          </p>
+          <button
+            type="button"
+            className={styles.exitStreamer}
+            onClick={() => setMode("player")}
+          >
+            Retour Table
+          </button>
+        </div>
       )}
 
       <ObsConnectModal
