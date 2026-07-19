@@ -32,14 +32,15 @@ Les cases peu incertaines sont entourées en pointillés. Dés et analyse ne dé
 
 Moteur CV maison (`src/lib/diceVision.ts`), sans capteur externe :
 
-1. **Repérage** des blobs clairs carrés sur le tapis calibré (double seuil : moyenne relevée + percentile)
-2. **Lecture de face** en pleine résolution : seuil d'**Otsu local**, extraction des pips par composantes connexes 8-connexité, filtres géométriques (taille, rondeur, position)
-3. **Validation du motif de face** (1–6), invariante en rotation : pip central, symétrie centrale des paires, colinéarité du 3, double rangée du 6 — un simple comptage de taches est rejeté (ombres, reflets, pions blancs)
-4. **Appariement des 2 dés** : tailles quasi identiques exigées (élimine les faux positifs isolés)
-5. **Stabilisation** : 3 lectures identiques consécutives + score de mouvement nul avant validation
+1. **Repérage bipolaire** : dés clairs à pips foncés **et** dés foncés à pips clairs (image inversée), avec a priori de taille relatif au plateau
+2. **Lecture de face** multi-recadrages + validation géométrique du motif 1–6
+3. **Appariement des 2 dés** : tailles quasi identiques exigées
+4. **Stabilisation** : 3 lectures identiques consécutives avant validation
+
+Le plateau accepte le **portrait** (charnière horizontale) : grille orientable + résolution auto du sens de numérotation à partir de la position de départ. Vérif : `npm run check:vision`.
 
 **Conditions pour une bonne lecture :**
-- Dés **blancs à points noirs** (standard backgammon)
+- Dés blancs à points noirs **ou** dés foncés à points blancs
 - **Éclairage uniforme**, sans ombre forte
 - Téléphone **fixe** au-dessus du plateau
 - Les dés peuvent atterrir **n'importe où sur le tapis** — la détection parcourt tout le plateau calibré
