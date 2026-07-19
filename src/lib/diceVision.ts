@@ -362,9 +362,9 @@ interface FaceReading {
  * Lecture d'une face en pleine résolution, POLARITÉ AUTOMATIQUE.
  * Plusieurs recadrages sont essayés pour absorber l'aliasing (surtout face 6).
  *
- * Anti-confusion 2→1 : un crop trop serré peut recentrer UN seul pip
- * diagonal d'un 2 et le faire passer pour un 1. On n'accepte jamais un « 1 »
- * si un recadrage plus large a lu ≥ 2 avec une confiance correcte.
+ * Anti-confusion 2→1 / 3→1 : un crop trop serré peut ne garder qu'un pip
+ * (diagonal d'un 2, ou centre d'un 3) et le faire passer pour un 1.
+ * On n'accepte jamais un « 1 » si un recadrage plus large a lu ≥ 2.
  */
 function readDieFace(
   data: Uint8ClampedArray,
@@ -545,9 +545,9 @@ function analyzeFace(
   if (value < 1 || value > 6) return { value: 0, confidence: 0 };
 
   // Une face « 1 » a un pip unique, rond, bien centré.
-  // Ne jamais accepter un « 1 » si un 2e pip faible existe (cas classique :
-  // crop trop serré sur un 2 → un seul pip diagonal recentré → faux 1).
-  let recoveredSecond: PipBlob | null = null;
+  // Récupérer les pips faibles périphériques : 1 → 2, 2 alignés en
+  // diagonale avec le centre → 3 (cas photo utilisateur : double 3).
+  let recoveredExtras: PipBlob[] = [];
   if (value === 1) {
     const p = pips[0];
     if (p.area < faceArea * 0.02 || p.area > faceArea * 0.13) return { value: 0, confidence: 0 };
@@ -559,20 +559,66 @@ function analyzeFace(
     // Plus strict : un vrai 1 est très centré ; un pip de 2 est souvent décalé.
     if (norm > 0.28) return { value: 0, confidence: 0 };
 
-    recoveredSecond =
-      blobs.find((b) => {
+    recoveredExtras = blobs
+      .filter((b) => {
         if (b === p) return false;
-        if (b.area < 2 || b.area > p.area * 1.4) return false;
+        if (b.area < 2 || b.area > p.area * 1.5) return false;
         const aspect2 = b.bw / Math.max(1, b.bh);
         if (aspect2 < 0.35 || aspect2 > 2.8) return false;
         const dx = (b.cx - p.cx) / dieSize;
         const dy = (b.cy - p.cy) / dieSize;
         const dist = Math.hypot(dx, dy);
-        return dist > 0.18 && dist < 0.85;
-      }) ?? null;
-    if (recoveredSecond) {
+        return dist > 0.18 && dist < 0.9;
+      })
+      .sort((a, b) => b.area - a.area)
+      .slice(0, 2);
+
+    if (recoveredExtras.length >= 2) {
+      // Deux pips externes + centre → 3 si opposés (symétrie centrale).
+      const a = recoveredExtras[0];
+      const b = recoveredExtras[1];
+      const ax = (a.cx - p.cx) / dieSize;
+      const ay = (a.cy - p.cy) / dieSize;
+      const bx = (b.cx - p.cx) / dieSize;
+      const by = (b.cy - p.cy) / dieSize;
+      const pairErr = Math.hypot(ax + bx, ay + by);
+      if (pairErr < 0.55) {
+        value = 3;
+        blobCount = 3;
+      } else {
+        // Pas colinéaires / opposés : garder le plus fort → 2
+        recoveredExtras = [recoveredExtras[0]];
+        value = 2;
+        blobCount = 2;
+      }
+    } else if (recoveredExtras.length === 1) {
       value = 2;
       blobCount = 2;
+    }
+  }
+
+  // 3→2 : centre + un coin détectés, l'autre coin faible manquant.
+  if (value === 2 && pips.length === 2 && recoveredExtras.length === 0) {
+    const [a, b] = pips;
+    const na = Math.hypot((a.cx / gw) * 2 - 1, (a.cy / gh) * 2 - 1);
+    const nb = Math.hypot((b.cx / gw) * 2 - 1, (b.cy / gh) * 2 - 1);
+    const centerPip = na < nb ? a : b;
+    const outerPip = na < nb ? b : a;
+    if (Math.min(na, nb) < 0.32 && Math.max(na, nb) > 0.35) {
+      const ox = outerPip.cx - centerPip.cx;
+      const oy = outerPip.cy - centerPip.cy;
+      const mirror = blobs.find((cand) => {
+        if (cand === a || cand === b) return false;
+        if (cand.area < 2) return false;
+        const mx = cand.cx - (centerPip.cx - ox);
+        const my = cand.cy - (centerPip.cy - oy);
+        return Math.hypot(mx, my) < dieSize * 0.22;
+      });
+      if (mirror) {
+        recoveredExtras = [mirror];
+        value = 3;
+        blobCount = 3;
+      }
     }
   }
 
@@ -580,16 +626,16 @@ function analyzeFace(
     x: (p.cx / gw) * 2 - 1,
     y: (p.cy / gh) * 2 - 1,
   }));
-  if (recoveredSecond) {
+  for (const extra of recoveredExtras) {
     centers.push({
-      x: (recoveredSecond.cx / gw) * 2 - 1,
-      y: (recoveredSecond.cy / gh) * 2 - 1,
+      x: (extra.cx / gw) * 2 - 1,
+      y: (extra.cy / gh) * 2 - 1,
     });
   }
 
   // Sur les très petits dés / pips fusionnés la géométrie est bruitée.
   let patternScore: number;
-  if (mergedExtra > 0 || (pips.length !== value && !recoveredSecond)) {
+  if (mergedExtra > 0 || (pips.length !== value && recoveredExtras.length === 0)) {
     patternScore = value === 6 && pips.length >= 5 ? 0.5 : 0.42;
   } else {
     patternScore = validatePipPattern(centers, value);
@@ -610,7 +656,7 @@ function analyzeFace(
     Math.min(0.14, (contrast - 26) / 320) +
     0.06;
   if (mergedExtra > 0) confidence -= 0.12;
-  if (recoveredSecond) confidence -= 0.06;
+  if (recoveredExtras.length > 0) confidence -= 0.05 * recoveredExtras.length;
 
   return { value, confidence: Math.max(0, Math.min(0.97, confidence)) };
 }
