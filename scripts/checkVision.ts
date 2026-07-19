@@ -245,6 +245,72 @@ console.log("Dés — rejet des pions (gros blobs ronds)");
   check("pions seuls → 0 dé", frame.dice.length === 0, `n=${frame.dice.length}`);
 }
 
+console.log("Régression — 2+6 foncé (cas photo utilisateur, jamais 2→1)");
+{
+  const W = 720;
+  const H = 1280;
+  const sizes = [22, 28, 34, 42, 52];
+  let pairOk = 0;
+  let neverFalseOne = true;
+  for (const side of sizes) {
+    const data = new Uint8ClampedArray(W * H * 4);
+    fillRect(data, W, 0, 0, W, H, 145, 120, 85);
+    drawDie(data, W, Math.round(W * 0.4), Math.round(H * 0.5), side, 2, true);
+    drawDie(data, W, Math.round(W * 0.58), Math.round(H * 0.52), side, 6, true);
+    const vals = detectDiceWithCamera(new ImageData(data, W, H), CALIB).dice.map(
+      (d) => d.value,
+    );
+    const sorted = [...vals].sort((a, b) => a - b);
+    const good = sorted.length === 2 && sorted[0] === 2 && sorted[1] === 6;
+    if (good) pairOk++;
+    // Interdit : lire un 1 alors que les dés sont 2 et 6.
+    if (vals.includes(1)) {
+      neverFalseOne = false;
+      check(`2+6 side=${side} → PAS de faux 1`, false, `lu=${vals.join(",")}`);
+    } else {
+      check(
+        `2+6 side=${side} → ${vals.join(",") || "∅"}`,
+        good || (vals.includes(2) && !vals.includes(1)),
+        good ? undefined : "paire incomplète mais sans confusion 2→1",
+      );
+    }
+  }
+  check(`2+6 foncé : 5/5 paires exactes`, pairOk === 5, `ok=${pairOk}`);
+  check(`2+6 foncé : jamais de faux 1`, neverFalseOne);
+}
+
+console.log("Régression — face 2 seule (crop serré / recentrage) ≠ 1");
+{
+  const W = 360;
+  const H = 640;
+  let falseOnes = 0;
+  let twos = 0;
+  for (const side of [20, 24, 30, 36, 44]) {
+    for (const ox of [-0.04, 0, 0.04]) {
+      for (const oy of [-0.03, 0, 0.03]) {
+        const data = new Uint8ClampedArray(W * H * 4);
+        fillRect(data, W, 0, 0, W, H, 145, 120, 85);
+        drawDie(
+          data,
+          W,
+          Math.round(W * (0.5 + ox)),
+          Math.round(H * (0.5 + oy)),
+          side,
+          2,
+          true,
+        );
+        const vals = detectDiceWithCamera(new ImageData(data, W, H), CALIB).dice.map(
+          (d) => d.value,
+        );
+        if (vals.includes(1)) falseOnes++;
+        if (vals.includes(2)) twos++;
+      }
+    }
+  }
+  check(`face 2 seule : 0 lecture « 1 »`, falseOnes === 0, `faux1=${falseOnes}`);
+  check(`face 2 seule : détectée au moins 10 fois`, twos >= 10, `twos=${twos}`);
+}
+
 function renderBoard(
   width: number,
   height: number,
