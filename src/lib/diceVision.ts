@@ -360,8 +360,11 @@ interface FaceReading {
 
 /**
  * Lecture d'une face en pleine résolution, POLARITÉ AUTOMATIQUE.
- * Plusieurs recadrages (léger shrink / expand) sont essayés pour absorber
- * les artefacts d'aliasing sur les très petits dés (surtout face 6).
+ * Plusieurs recadrages sont essayés pour absorber l'aliasing (surtout face 6).
+ *
+ * Anti-confusion 2→1 / 3→1 : un crop trop serré peut ne garder qu'un pip
+ * (diagonal d'un 2, ou centre d'un 3) et le faire passer pour un 1.
+ * On n'accepte jamais un « 1 » si un recadrage plus large a lu ≥ 2.
  */
 function readDieFace(
   data: Uint8ClampedArray,
@@ -369,8 +372,9 @@ function readDieFace(
   height: number,
   box: Box,
 ): FaceReading {
-  const scales = [1, 0.9, 1.1, 0.8];
-  let best: FaceReading = { value: 0, confidence: 0 };
+  // Du plus large au plus serré : le large a priorité pour arbitrer le 1.
+  const scales = [1.1, 1, 0.9, 0.8];
+  const readings: FaceReading[] = [];
 
   for (const s of scales) {
     const side = Math.max(9, Math.round(Math.min(box.w, box.h) * s));
@@ -382,9 +386,26 @@ function readDieFace(
       w: side,
       h: side,
     };
-    const reading = readDieFaceOnce(data, width, height, sub);
-    if (reading.confidence > best.confidence) best = reading;
-    if (best.confidence >= 0.9 && best.value >= 1) break;
+    readings.push(readDieFaceOnce(data, width, height, sub));
+  }
+
+  const multi = readings.filter((r) => r.value >= 2 && r.confidence >= 0.48);
+  if (multi.length > 0) {
+    return multi.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+  }
+
+  // Un « 1 » n'est accepté que s'il apparaît aussi sur un crop large
+  // (évite le faux 1 issu d'un pip de 2 isolé dans un mini-crop).
+  const ones = readings.filter((r) => r.value === 1 && r.confidence >= 0.55);
+  const oneOnWide = ones.length > 0 && readings.slice(0, 2).some((r) => r.value === 1);
+  if (oneOnWide) {
+    return ones.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+  }
+
+  let best: FaceReading = { value: 0, confidence: 0 };
+  for (const r of readings) {
+    if (r.value === 1) continue; // rejeté hors crop large
+    if (r.confidence > best.confidence) best = r;
   }
   return best;
 }
@@ -487,7 +508,11 @@ function analyzeFace(
   const blobs = pickBlobs(blobs4, blobs8);
   const dieSize = Math.min(gw, gh);
 
-  const pips = blobs.filter((b) => {
+  // Face 6 : les pips d'une même colonne se touchent souvent → 2 barres
+  // verticales rejetées par le filtre d'aspect. On les re-découpe.
+  const splitBlobs = splitElongatedPipBlobs(blobs, dieSize, faceArea);
+
+  const pips = splitBlobs.filter((b) => {
     if (b.area < Math.max(2, faceArea * 0.005) || b.area > faceArea * 0.13) return false;
     const aspect = b.bw / Math.max(1, b.bh);
     if (aspect < 0.4 || aspect > 2.5) return false;
@@ -519,22 +544,98 @@ function analyzeFace(
   }
   if (value < 1 || value > 6) return { value: 0, confidence: 0 };
 
-  // Une face « 1 » a un pip unique, rond, centré, de taille significative
-  // (rejette les reflets sur pions et les ombres).
+  // Une face « 1 » a un pip unique, rond, bien centré.
+  // Récupérer les pips faibles périphériques : 1 → 2, 2 alignés en
+  // diagonale avec le centre → 3 (cas photo utilisateur : double 3).
+  let recoveredExtras: PipBlob[] = [];
   if (value === 1) {
     const p = pips[0];
     if (p.area < faceArea * 0.02 || p.area > faceArea * 0.13) return { value: 0, confidence: 0 };
     const aspect = p.bw / Math.max(1, p.bh);
     if (aspect < 0.6 || aspect > 1.65) return { value: 0, confidence: 0 };
+    const nx = (p.cx / gw) * 2 - 1;
+    const ny = (p.cy / gh) * 2 - 1;
+    const norm = Math.hypot(nx, ny);
+    // Plus strict : un vrai 1 est très centré ; un pip de 2 est souvent décalé.
+    if (norm > 0.28) return { value: 0, confidence: 0 };
+
+    recoveredExtras = blobs
+      .filter((b) => {
+        if (b === p) return false;
+        if (b.area < 2 || b.area > p.area * 1.5) return false;
+        const aspect2 = b.bw / Math.max(1, b.bh);
+        if (aspect2 < 0.35 || aspect2 > 2.8) return false;
+        const dx = (b.cx - p.cx) / dieSize;
+        const dy = (b.cy - p.cy) / dieSize;
+        const dist = Math.hypot(dx, dy);
+        return dist > 0.18 && dist < 0.9;
+      })
+      .sort((a, b) => b.area - a.area)
+      .slice(0, 2);
+
+    if (recoveredExtras.length >= 2) {
+      // Deux pips externes + centre → 3 si opposés (symétrie centrale).
+      const a = recoveredExtras[0];
+      const b = recoveredExtras[1];
+      const ax = (a.cx - p.cx) / dieSize;
+      const ay = (a.cy - p.cy) / dieSize;
+      const bx = (b.cx - p.cx) / dieSize;
+      const by = (b.cy - p.cy) / dieSize;
+      const pairErr = Math.hypot(ax + bx, ay + by);
+      if (pairErr < 0.55) {
+        value = 3;
+        blobCount = 3;
+      } else {
+        // Pas colinéaires / opposés : garder le plus fort → 2
+        recoveredExtras = [recoveredExtras[0]];
+        value = 2;
+        blobCount = 2;
+      }
+    } else if (recoveredExtras.length === 1) {
+      value = 2;
+      blobCount = 2;
+    }
+  }
+
+  // 3→2 : centre + un coin détectés, l'autre coin faible manquant.
+  if (value === 2 && pips.length === 2 && recoveredExtras.length === 0) {
+    const [a, b] = pips;
+    const na = Math.hypot((a.cx / gw) * 2 - 1, (a.cy / gh) * 2 - 1);
+    const nb = Math.hypot((b.cx / gw) * 2 - 1, (b.cy / gh) * 2 - 1);
+    const centerPip = na < nb ? a : b;
+    const outerPip = na < nb ? b : a;
+    if (Math.min(na, nb) < 0.32 && Math.max(na, nb) > 0.35) {
+      const ox = outerPip.cx - centerPip.cx;
+      const oy = outerPip.cy - centerPip.cy;
+      const mirror = blobs.find((cand) => {
+        if (cand === a || cand === b) return false;
+        if (cand.area < 2) return false;
+        const mx = cand.cx - (centerPip.cx - ox);
+        const my = cand.cy - (centerPip.cy - oy);
+        return Math.hypot(mx, my) < dieSize * 0.22;
+      });
+      if (mirror) {
+        recoveredExtras = [mirror];
+        value = 3;
+        blobCount = 3;
+      }
+    }
   }
 
   const centers = pips.map((p) => ({
     x: (p.cx / gw) * 2 - 1,
     y: (p.cy / gh) * 2 - 1,
   }));
+  for (const extra of recoveredExtras) {
+    centers.push({
+      x: (extra.cx / gw) * 2 - 1,
+      y: (extra.cy / gh) * 2 - 1,
+    });
+  }
+
   // Sur les très petits dés / pips fusionnés la géométrie est bruitée.
   let patternScore: number;
-  if (mergedExtra > 0 || pips.length !== value) {
+  if (mergedExtra > 0 || (pips.length !== value && recoveredExtras.length === 0)) {
     patternScore = value === 6 && pips.length >= 5 ? 0.5 : 0.42;
   } else {
     patternScore = validatePipPattern(centers, value);
@@ -555,6 +656,7 @@ function analyzeFace(
     Math.min(0.14, (contrast - 26) / 320) +
     0.06;
   if (mergedExtra > 0) confidence -= 0.12;
+  if (recoveredExtras.length > 0) confidence -= 0.05 * recoveredExtras.length;
 
   return { value, confidence: Math.max(0, Math.min(0.97, confidence)) };
 }
@@ -652,6 +754,49 @@ function validatePipPattern(centers: PipCenter[], count: number): number {
   }
 
   return Math.max(0, Math.min(1, score));
+}
+
+/**
+ * Découpe les barres de pips fusionnés (colonnes/rangées du 6) en pips
+ * virtuels espacés le long du grand axe.
+ */
+function splitElongatedPipBlobs(
+  blobs: PipBlob[],
+  dieSize: number,
+  faceArea: number,
+): PipBlob[] {
+  const out: PipBlob[] = [];
+  const pitch = Math.max(3, dieSize * 0.2);
+
+  for (const b of blobs) {
+    const long = Math.max(b.bw, b.bh);
+    const short = Math.min(b.bw, b.bh);
+    const vertical = b.bh >= b.bw;
+    const elongated = long > short * 1.5 && long >= dieSize * 0.3 && short <= dieSize * 0.42;
+    const fatEnough = b.area >= Math.max(6, faceArea * 0.02);
+
+    if (elongated && fatEnough) {
+      const n = Math.max(2, Math.min(3, Math.round(long / pitch)));
+      const areaEach = Math.max(2, b.area / n);
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0.5 : i / (n - 1);
+        const cx = vertical ? b.cx : b.cx - b.bw / 2 + 0.5 + t * (b.bw - 1);
+        const cy = vertical ? b.cy - b.bh / 2 + 0.5 + t * (b.bh - 1) : b.cy;
+        out.push({
+          area: areaEach,
+          cx,
+          cy,
+          bw: short,
+          bh: short,
+        });
+      }
+      continue;
+    }
+
+    out.push(b);
+  }
+
+  return out;
 }
 
 function extractPipBlobs(
